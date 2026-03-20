@@ -13,6 +13,14 @@
 
 char* ustr_new(size_t sz, const char* data);
 void ustr_del(char* s);
+
+typedef enum {
+  USTR_ERR_NONE,
+  USTR_ERR_INVALID,
+  USTR_ERR_TRUNCATED,
+} ustr_err;
+
+ustr_err ustr_find_error(size_t sz, const char* data, size_t* pos);
 char* ustr_slice(const char* s, int32_t start, int32_t end);
 
 int32_t ustr_bytesize(const char* s);

@@ -228,6 +228,63 @@ TEST(test_iter_from_middle_multibyte) {
   ustr_del(s);
 }
 
+// --- find_error ---
+
+TEST(test_find_error_valid) {
+  size_t pos;
+  assert(ustr_find_error(5, "hello", &pos) == USTR_ERR_NONE);
+  assert(ustr_find_error(0, "", &pos) == USTR_ERR_NONE);
+  assert(ustr_find_error(5, "caf\xC3\xA9", &pos) == USTR_ERR_NONE);
+}
+
+TEST(test_find_error_invalid_continuation) {
+  size_t pos;
+  assert(ustr_find_error(1, "\x80", &pos) == USTR_ERR_INVALID);
+  assert(pos == 0);
+}
+
+TEST(test_find_error_invalid_overlong) {
+  size_t pos;
+  assert(ustr_find_error(2, "\xC0\x80", &pos) == USTR_ERR_INVALID);
+  assert(pos == 0);
+}
+
+TEST(test_find_error_invalid_surrogate) {
+  size_t pos;
+  assert(ustr_find_error(3, "\xED\xA0\x80", &pos) == USTR_ERR_INVALID);
+  assert(pos == 0);
+}
+
+TEST(test_find_error_invalid_mid_string) {
+  size_t pos;
+  assert(ustr_find_error(4, "abc\xFF", &pos) == USTR_ERR_INVALID);
+  assert(pos == 3);
+}
+
+TEST(test_find_error_truncated_2byte) {
+  size_t pos;
+  assert(ustr_find_error(1, "\xC3", &pos) == USTR_ERR_TRUNCATED);
+  assert(pos == 0);
+}
+
+TEST(test_find_error_truncated_3byte) {
+  size_t pos;
+  assert(ustr_find_error(2, "\xE2\x82", &pos) == USTR_ERR_TRUNCATED);
+  assert(pos == 0);
+}
+
+TEST(test_find_error_truncated_4byte) {
+  size_t pos;
+  assert(ustr_find_error(3, "\xF0\x9F\x98", &pos) == USTR_ERR_TRUNCATED);
+  assert(pos == 0);
+}
+
+TEST(test_find_error_truncated_mid_string) {
+  size_t pos;
+  assert(ustr_find_error(6, "hello\xC3", &pos) == USTR_ERR_TRUNCATED);
+  assert(pos == 5);
+}
+
 // --- Slicing ---
 
 TEST(test_slice_ascii) {
@@ -383,6 +440,16 @@ int main(void) {
   RUN(test_iter_line_col);
   RUN(test_iter_from_middle);
   RUN(test_iter_from_middle_multibyte);
+
+  RUN(test_find_error_valid);
+  RUN(test_find_error_invalid_continuation);
+  RUN(test_find_error_invalid_overlong);
+  RUN(test_find_error_invalid_surrogate);
+  RUN(test_find_error_invalid_mid_string);
+  RUN(test_find_error_truncated_2byte);
+  RUN(test_find_error_truncated_3byte);
+  RUN(test_find_error_truncated_4byte);
+  RUN(test_find_error_truncated_mid_string);
 
   RUN(test_slice_ascii);
   RUN(test_slice_multibyte);

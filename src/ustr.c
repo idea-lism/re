@@ -73,6 +73,29 @@ int ustr_validate_scalar(const uint8_t* data, size_t sz, uint8_t* marks) {
 int ustr_validate(const uint8_t* data, size_t sz, uint8_t* marks) { return ustr_validate_scalar(data, sz, marks); }
 #endif
 
+// --- Error diagnostics ---
+
+ustr_err ustr_find_error(size_t sz, const char* data, size_t* pos) {
+  const uint8_t* d = (const uint8_t*)data;
+  uint8_t state = S_ACC;
+  size_t seq_start = 0;
+  for (size_t i = 0; i < sz; i++) {
+    if (state == S_ACC) {
+      seq_start = i;
+    }
+    state = utf8_trans[state][utf8_class[d[i]]];
+    if (state == S_ERR) {
+      *pos = seq_start;
+      return USTR_ERR_INVALID;
+    }
+  }
+  if (state != S_ACC) {
+    *pos = seq_start;
+    return USTR_ERR_TRUNCATED;
+  }
+  return USTR_ERR_NONE;
+}
+
 // --- Public API ---
 
 char* ustr_new(size_t sz, const char* data) {
