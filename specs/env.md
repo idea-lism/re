@@ -6,3 +6,8 @@
   - controls: `config.rb debug` and `config.rb release` generates different results
 
 - Implement in C, not C++.
+
+Additional verifications:
+
+- ASAN
+- Test coverage

@@ -36,6 +36,6 @@ The building model is NFA, output is DFA.
     - note that we don't need special handling for 0 or -1 because we have the `smallest` rule
   - dead state input:
     - should not happen, when in `debug_mode`, make debugger break at the trap, but still return `{last_state, -2}`
-- IR also encodes debug infomation so lldb step-by-step can show the regexp source:
+- IR also encodes debug information so lldb step-by-step can show the regexp source:
   - utilize dfa's `source_file_name`
   - utilize iterator's `line` and `col`

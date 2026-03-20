@@ -5,15 +5,21 @@ Simple LLVM IR writer
 - maps state name to basic block label
 - auto numbering
 
-We are targeting DFA generating, so there is no loop, so no need complex Dominance-Frontier algorithm.
+We target DFA generation, so there are no loops and no need for a complex Dominance-Frontier algorithm.
 
 API
 
-- basic: `irwriter_new(FILE*, char* target_tripple)`, `irwriter_del()`
-- module prelude and epilogure `irwriter_start()`, `irwriter_end()`
-- function prelude and epilogure `irwriter_define_start()`, `irwriter_define_end()`
+- basic: `irwriter_new(FILE*, char* target_triple)`, `irwriter_del()`
+- module prelude and epilogue `irwriter_start()`, `irwriter_end()`
+- function prelude and epilogue `irwriter_define_start()`, `irwriter_define_end()`
   - also with file_path, compiling cwd
 - starting a basic block
 - binop, binop_imm, etc
 - emits debug information
 - can create debugtrap
+
+Security
+
+- check file_name should not contain `"` or `\\`
+- check function_name should not contain `"` or `\\`
+- check target_triple format
