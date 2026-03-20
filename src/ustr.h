@@ -36,5 +36,5 @@ typedef struct {
   int32_t col;
 } ustr_iter;
 
-void ustr_iter_init(ustr_iter* it, const char* s, int32_t byte_offset);
+void ustr_iter_init(ustr_iter* it, const char* s, int32_t char_offset);
 int32_t ustr_iter_next(ustr_iter* it);

@@ -6,96 +6,84 @@
 
 #define MAX_UNICODE 0x10FFFF
 
-// --- Negated range iterator ---
+// --- ReRange ---
 
-typedef struct {
-  size_t sz;
-  Range* ranges;
-  size_t idx;
-} NegRangeState;
+ReRange* re_range_new(void) { return calloc(1, sizeof(ReRange)); }
 
-static NegRangeState neg_state;
-
-static int range_cmp(const void* a, const void* b) {
-  const Range* ra = a;
-  const Range* rb = b;
-  if (ra->start != rb->start) {
-    return ra->start < rb->start ? -1 : 1;
+void re_range_del(ReRange* range) {
+  if (!range) {
+    return;
   }
-  return ra->end < rb->end ? -1 : (ra->end > rb->end ? 1 : 0);
+  free(range->ivs);
+  free(range);
 }
 
-void re_neg_ranges(NegRangeIter* iter, size_t sz, Range* ranges) {
-  if (sz > 0) {
-    qsort(ranges, sz, sizeof(Range), range_cmp);
-  }
-  neg_state.sz = sz;
-  neg_state.ranges = ranges;
-  neg_state.idx = 0;
+void re_range_add(ReRange* range, int32_t start_cp, int32_t end_cp) {
+  assert(start_cp <= end_cp);
+  assert(start_cp >= 0 && end_cp <= MAX_UNICODE);
 
-  // find the first gap
-  int32_t pos = 0;
-  while (neg_state.idx < sz && ranges[neg_state.idx].start <= pos) {
-    if (ranges[neg_state.idx].end >= pos) {
-      pos = ranges[neg_state.idx].end + 1;
-    }
-    neg_state.idx++;
-  }
-
-  if (neg_state.idx >= sz) {
-    // gap from pos to MAX_UNICODE
-    if (pos <= MAX_UNICODE) {
-      iter->start = pos;
-      iter->end = MAX_UNICODE;
-      iter->done = false;
+  // find first interval that overlaps or is adjacent (iv.end >= start_cp - 1)
+  int32_t lo = 0, hi = range->len;
+  while (lo < hi) {
+    int32_t mid = lo + (hi - lo) / 2;
+    if (range->ivs[mid].end < start_cp - 1) {
+      lo = mid + 1;
     } else {
-      iter->done = true;
+      hi = mid;
     }
+  }
+  // lo = first interval that could merge
+
+  // find last interval that overlaps or is adjacent (iv.start <= end_cp + 1)
+  int32_t first = lo;
+  int32_t last = first; // exclusive
+  while (last < range->len && range->ivs[last].start <= end_cp + 1) {
+    last++;
+  }
+
+  if (first == last) {
+    // no overlap, insert new interval at position first
+    if (range->len == range->cap) {
+      range->cap = range->cap ? range->cap * 2 : 8;
+      range->ivs = realloc(range->ivs, (size_t)range->cap * sizeof(ReInterval));
+    }
+    memmove(&range->ivs[first + 1], &range->ivs[first], (size_t)(range->len - first) * sizeof(ReInterval));
+    range->ivs[first] = (ReInterval){start_cp, end_cp};
+    range->len++;
   } else {
-    // gap from pos to ranges[idx].start - 1
-    iter->start = pos;
-    iter->end = ranges[neg_state.idx].start - 1;
-    iter->done = false;
+    // merge [first, last) into one interval
+    int32_t merged_start = start_cp < range->ivs[first].start ? start_cp : range->ivs[first].start;
+    int32_t merged_end = end_cp > range->ivs[last - 1].end ? end_cp : range->ivs[last - 1].end;
+    range->ivs[first] = (ReInterval){merged_start, merged_end};
+    int32_t removed = last - first - 1;
+    if (removed > 0) {
+      memmove(&range->ivs[first + 1], &range->ivs[last], (size_t)(range->len - last) * sizeof(ReInterval));
+      range->len -= removed;
+    }
   }
 }
 
-void re_neg_next(NegRangeIter* iter) {
-  if (iter->done) {
-    return;
-  }
+void re_range_neg(ReRange* range) {
+  // collect gaps in [0, MAX_UNICODE]
+  int32_t gap_cap = range->len + 1;
+  ReInterval* gaps = malloc((size_t)gap_cap * sizeof(ReInterval));
+  int32_t ngaps = 0;
+  int32_t pos = 0;
 
-  // advance past the range that ended the previous gap
-  int32_t pos;
-  if (neg_state.idx < neg_state.sz) {
-    pos = neg_state.ranges[neg_state.idx].end + 1;
-    neg_state.idx++;
-  } else {
-    iter->done = true;
-    return;
-  }
-
-  // skip overlapping/adjacent ranges
-  while (neg_state.idx < neg_state.sz && neg_state.ranges[neg_state.idx].start <= pos) {
-    if (neg_state.ranges[neg_state.idx].end >= pos) {
-      pos = neg_state.ranges[neg_state.idx].end + 1;
+  for (int32_t i = 0; i < range->len; i++) {
+    if (pos < range->ivs[i].start) {
+      gaps[ngaps++] = (ReInterval){pos, range->ivs[i].start - 1};
     }
-    neg_state.idx++;
+    pos = range->ivs[i].end + 1;
+  }
+  if (pos <= MAX_UNICODE) {
+    gaps[ngaps++] = (ReInterval){pos, MAX_UNICODE};
   }
 
-  if (pos > MAX_UNICODE) {
-    iter->done = true;
-    return;
-  }
-
-  if (neg_state.idx >= neg_state.sz) {
-    iter->start = pos;
-    iter->end = MAX_UNICODE;
-    iter->done = false;
-  } else {
-    iter->start = pos;
-    iter->end = neg_state.ranges[neg_state.idx].start - 1;
-    iter->done = false;
-  }
+  free(range->ivs);
+  range->ivs = gaps;
+  range->len = ngaps;
+  range->cap = gap_cap;
 }
 
 // --- Re builder ---
@@ -149,7 +137,6 @@ Re* re_new(Aut* aut) {
   Re* re = calloc(1, sizeof(Re));
   re->aut = aut;
   re->next_state = 0;
-  // state 0 is the initial state; push the implicit root frame
   int32_t s0 = alloc_state(re);
   (void)s0;
   push_frame(re, 0, 0);
@@ -167,10 +154,21 @@ void re_del(Re* re) {
   free(re);
 }
 
-void re_range(Re* re, int32_t cp_start, int32_t cp_end) {
+void re_append_ch(Re* re, int32_t codepoint) {
   GroupFrame* f = top(re);
   int32_t s = alloc_state(re);
-  aut_transition(re->aut, (TransitionDef){f->cur_state, s, cp_start, cp_end}, (DebugInfo){0, 0});
+  aut_transition(re->aut, (TransitionDef){f->cur_state, s, codepoint, codepoint}, (DebugInfo){0, 0});
+  f->cur_state = s;
+}
+
+void re_append_range(Re* re, ReRange* range) {
+  assert(range->len > 0);
+  GroupFrame* f = top(re);
+  int32_t s = alloc_state(re);
+  for (int32_t i = 0; i < range->len; i++) {
+    aut_transition(re->aut, (TransitionDef){f->cur_state, s, range->ivs[i].start, range->ivs[i].end},
+                   (DebugInfo){0, 0});
+  }
   f->cur_state = s;
 }
 
@@ -188,19 +186,6 @@ void re_fork(Re* re) {
   int32_t branch = alloc_state(re);
   aut_epsilon(re->aut, f->start_state, branch, 0);
   f->cur_state = branch;
-}
-
-void re_seq(Re* re, ...) {
-  va_list ap;
-  va_start(ap, re);
-  for (;;) {
-    int32_t cp = va_arg(ap, int32_t);
-    if (cp < 0) {
-      break;
-    }
-    re_range(re, cp, cp);
-  }
-  va_end(ap);
 }
 
 void re_rparen(Re* re) {

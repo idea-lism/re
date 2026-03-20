@@ -12,3 +12,4 @@ Code style:
 - types use camel case
 - vars & functions use snake case
 - use stdint. for example, `int32_t` instead of `int`
+- static (private) functions should start with `_`, names be simple as possible (without module prefix)

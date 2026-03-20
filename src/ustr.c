@@ -1,5 +1,6 @@
 #include "ustr.h"
 #include "ustr_intern.h"
+#include <assert.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -204,15 +205,27 @@ int32_t ustr_size(const char* s) {
 
 // --- Iterator ---
 
-void ustr_iter_init(ustr_iter* it, const char* s, int32_t byte_offset) {
+void ustr_iter_init(ustr_iter* it, const char* s, int32_t char_offset) {
   int32_t size = ustr_bytesize(s);
+  const uint8_t* marks = ustr__marks_ptr_const(s, size);
+  int32_t byte_off;
+  if (char_offset == 0) {
+    byte_off = 0;
+  } else {
+    byte_off = marks_nth_cp(marks, size, char_offset);
+    if (byte_off < 0) {
+      int32_t cplen = marks_popcount(marks, size);
+      assert(char_offset == cplen);
+      byte_off = size;
+    }
+  }
   it->s = s;
   it->size = size;
-  it->marks = ustr__marks_ptr_const(s, size);
-  it->byte_off = byte_offset;
+  it->marks = marks;
+  it->byte_off = byte_off;
   it->line = 0;
   it->col = 0;
-  it->cp_idx = marks_popcount(it->marks, byte_offset);
+  it->cp_idx = char_offset;
 }
 
 static inline int32_t decode_cp(const uint8_t* p, int32_t* adv) {

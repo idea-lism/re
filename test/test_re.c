@@ -44,218 +44,257 @@ TEST(test_lifecycle) {
   aut_del(a);
 }
 
-// --- Negated ranges ---
-
-TEST(test_neg_empty) {
-  // No ranges to negate: should yield [0, 0x10FFFF]
-  NegRangeIter iter;
-  re_neg_ranges(&iter, 0, NULL);
-  assert(!iter.done);
-  assert(iter.start == 0);
-  assert(iter.end == 0x10FFFF);
-  re_neg_next(&iter);
-  assert(iter.done);
+TEST(test_range_lifecycle) {
+  ReRange* r = re_range_new();
+  assert(r);
+  assert(r->len == 0);
+  re_range_del(r);
 }
 
-TEST(test_neg_single) {
-  // Negate [10, 20]: should yield [0,9] and [21, 0x10FFFF]
-  Range ranges[] = {{10, 20}};
-  NegRangeIter iter;
-  re_neg_ranges(&iter, 1, ranges);
-  assert(!iter.done);
-  assert(iter.start == 0);
-  assert(iter.end == 9);
+// --- ReRange add ---
 
-  re_neg_next(&iter);
-  assert(!iter.done);
-  assert(iter.start == 21);
-  assert(iter.end == 0x10FFFF);
-
-  re_neg_next(&iter);
-  assert(iter.done);
+TEST(test_range_add_single) {
+  ReRange* r = re_range_new();
+  re_range_add(r, 10, 20);
+  assert(r->len == 1);
+  assert(r->ivs[0].start == 10);
+  assert(r->ivs[0].end == 20);
+  re_range_del(r);
 }
 
-TEST(test_neg_at_start) {
-  // Negate [0, 5]: should yield [6, 0x10FFFF]
-  Range ranges[] = {{0, 5}};
-  NegRangeIter iter;
-  re_neg_ranges(&iter, 1, ranges);
-  assert(!iter.done);
-  assert(iter.start == 6);
-  assert(iter.end == 0x10FFFF);
-
-  re_neg_next(&iter);
-  assert(iter.done);
+TEST(test_range_add_disjoint) {
+  ReRange* r = re_range_new();
+  re_range_add(r, 10, 20);
+  re_range_add(r, 30, 40);
+  assert(r->len == 2);
+  assert(r->ivs[0].start == 10 && r->ivs[0].end == 20);
+  assert(r->ivs[1].start == 30 && r->ivs[1].end == 40);
+  re_range_del(r);
 }
 
-TEST(test_neg_at_end) {
-  // Negate [0x10FFFE, 0x10FFFF]: should yield [0, 0x10FFFD]
-  Range ranges[] = {{0x10FFFE, 0x10FFFF}};
-  NegRangeIter iter;
-  re_neg_ranges(&iter, 1, ranges);
-  assert(!iter.done);
-  assert(iter.start == 0);
-  assert(iter.end == 0x10FFFD);
-
-  re_neg_next(&iter);
-  assert(iter.done);
+TEST(test_range_add_disjoint_unsorted) {
+  ReRange* r = re_range_new();
+  re_range_add(r, 30, 40);
+  re_range_add(r, 10, 20);
+  assert(r->len == 2);
+  assert(r->ivs[0].start == 10 && r->ivs[0].end == 20);
+  assert(r->ivs[1].start == 30 && r->ivs[1].end == 40);
+  re_range_del(r);
 }
 
-TEST(test_neg_full) {
-  // Negate [0, 0x10FFFF]: no gaps
-  Range ranges[] = {{0, 0x10FFFF}};
-  NegRangeIter iter;
-  re_neg_ranges(&iter, 1, ranges);
-  assert(iter.done);
+TEST(test_range_add_overlap) {
+  ReRange* r = re_range_new();
+  re_range_add(r, 10, 20);
+  re_range_add(r, 15, 30);
+  assert(r->len == 1);
+  assert(r->ivs[0].start == 10 && r->ivs[0].end == 30);
+  re_range_del(r);
 }
 
-TEST(test_neg_multiple) {
-  // Negate [5,10], [20,30]: gaps are [0,4], [11,19], [31, 0x10FFFF]
-  Range ranges[] = {{5, 10}, {20, 30}};
-  NegRangeIter iter;
-  re_neg_ranges(&iter, 2, ranges);
-
-  assert(!iter.done);
-  assert(iter.start == 0);
-  assert(iter.end == 4);
-
-  re_neg_next(&iter);
-  assert(!iter.done);
-  assert(iter.start == 11);
-  assert(iter.end == 19);
-
-  re_neg_next(&iter);
-  assert(!iter.done);
-  assert(iter.start == 31);
-  assert(iter.end == 0x10FFFF);
-
-  re_neg_next(&iter);
-  assert(iter.done);
+TEST(test_range_add_adjacent) {
+  ReRange* r = re_range_new();
+  re_range_add(r, 10, 20);
+  re_range_add(r, 21, 30);
+  assert(r->len == 1);
+  assert(r->ivs[0].start == 10 && r->ivs[0].end == 30);
+  re_range_del(r);
 }
 
-TEST(test_neg_overlapping) {
-  // Negate [5,15], [10,20]: effective [5,20], gaps [0,4], [21, 0x10FFFF]
-  Range ranges[] = {{5, 15}, {10, 20}};
-  NegRangeIter iter;
-  re_neg_ranges(&iter, 2, ranges);
-
-  assert(!iter.done);
-  assert(iter.start == 0);
-  assert(iter.end == 4);
-
-  re_neg_next(&iter);
-  assert(!iter.done);
-  assert(iter.start == 21);
-  assert(iter.end == 0x10FFFF);
-
-  re_neg_next(&iter);
-  assert(iter.done);
+TEST(test_range_add_subset) {
+  ReRange* r = re_range_new();
+  re_range_add(r, 10, 40);
+  re_range_add(r, 15, 25);
+  assert(r->len == 1);
+  assert(r->ivs[0].start == 10 && r->ivs[0].end == 40);
+  re_range_del(r);
 }
 
-TEST(test_neg_adjacent) {
-  // Negate [5,10], [11,20]: effective [5,20], gaps [0,4], [21, 0x10FFFF]
-  Range ranges[] = {{5, 10}, {11, 20}};
-  NegRangeIter iter;
-  re_neg_ranges(&iter, 2, ranges);
-
-  assert(!iter.done);
-  assert(iter.start == 0);
-  assert(iter.end == 4);
-
-  re_neg_next(&iter);
-  assert(!iter.done);
-  assert(iter.start == 21);
-  assert(iter.end == 0x10FFFF);
-
-  re_neg_next(&iter);
-  assert(iter.done);
+TEST(test_range_add_superset) {
+  ReRange* r = re_range_new();
+  re_range_add(r, 15, 25);
+  re_range_add(r, 10, 40);
+  assert(r->len == 1);
+  assert(r->ivs[0].start == 10 && r->ivs[0].end == 40);
+  re_range_del(r);
 }
 
-TEST(test_neg_unsorted) {
-  // Negate [20,30], [5,10] (unsorted): gaps [0,4], [11,19], [31, 0x10FFFF]
-  Range ranges[] = {{20, 30}, {5, 10}};
-  NegRangeIter iter;
-  re_neg_ranges(&iter, 2, ranges);
-
-  assert(!iter.done);
-  assert(iter.start == 0);
-  assert(iter.end == 4);
-
-  re_neg_next(&iter);
-  assert(!iter.done);
-  assert(iter.start == 11);
-  assert(iter.end == 19);
-
-  re_neg_next(&iter);
-  assert(!iter.done);
-  assert(iter.start == 31);
-  assert(iter.end == 0x10FFFF);
-
-  re_neg_next(&iter);
-  assert(iter.done);
+TEST(test_range_add_merge_three) {
+  ReRange* r = re_range_new();
+  re_range_add(r, 10, 20);
+  re_range_add(r, 30, 40);
+  re_range_add(r, 50, 60);
+  assert(r->len == 3);
+  // now merge all three
+  re_range_add(r, 15, 55);
+  assert(r->len == 1);
+  assert(r->ivs[0].start == 10 && r->ivs[0].end == 60);
+  re_range_del(r);
 }
 
-// --- re_range ---
+// --- ReRange neg ---
 
-static void build_range(Aut* a, Re* re, IrWriter* w) {
-  re_range(re, 'A', 'Z');
+TEST(test_range_neg_empty) {
+  ReRange* r = re_range_new();
+  re_range_neg(r);
+  assert(r->len == 1);
+  assert(r->ivs[0].start == 0 && r->ivs[0].end == 0x10FFFF);
+  re_range_del(r);
+}
+
+TEST(test_range_neg_full) {
+  ReRange* r = re_range_new();
+  re_range_add(r, 0, 0x10FFFF);
+  re_range_neg(r);
+  assert(r->len == 0);
+  re_range_del(r);
+}
+
+TEST(test_range_neg_single) {
+  ReRange* r = re_range_new();
+  re_range_add(r, 10, 20);
+  re_range_neg(r);
+  assert(r->len == 2);
+  assert(r->ivs[0].start == 0 && r->ivs[0].end == 9);
+  assert(r->ivs[1].start == 21 && r->ivs[1].end == 0x10FFFF);
+  re_range_del(r);
+}
+
+TEST(test_range_neg_at_start) {
+  ReRange* r = re_range_new();
+  re_range_add(r, 0, 5);
+  re_range_neg(r);
+  assert(r->len == 1);
+  assert(r->ivs[0].start == 6 && r->ivs[0].end == 0x10FFFF);
+  re_range_del(r);
+}
+
+TEST(test_range_neg_at_end) {
+  ReRange* r = re_range_new();
+  re_range_add(r, 0x10FFFE, 0x10FFFF);
+  re_range_neg(r);
+  assert(r->len == 1);
+  assert(r->ivs[0].start == 0 && r->ivs[0].end == 0x10FFFD);
+  re_range_del(r);
+}
+
+TEST(test_range_neg_multiple) {
+  ReRange* r = re_range_new();
+  re_range_add(r, 5, 10);
+  re_range_add(r, 20, 30);
+  re_range_neg(r);
+  assert(r->len == 3);
+  assert(r->ivs[0].start == 0 && r->ivs[0].end == 4);
+  assert(r->ivs[1].start == 11 && r->ivs[1].end == 19);
+  assert(r->ivs[2].start == 31 && r->ivs[2].end == 0x10FFFF);
+  re_range_del(r);
+}
+
+TEST(test_range_neg_double) {
+  // negate twice = original
+  ReRange* r = re_range_new();
+  re_range_add(r, 5, 10);
+  re_range_add(r, 20, 30);
+  re_range_neg(r);
+  re_range_neg(r);
+  assert(r->len == 2);
+  assert(r->ivs[0].start == 5 && r->ivs[0].end == 10);
+  assert(r->ivs[1].start == 20 && r->ivs[1].end == 30);
+  re_range_del(r);
+}
+
+// --- re_append_ch ---
+
+static void build_ch(Aut* a, Re* re, IrWriter* w) {
+  re_append_ch(re, 'A');
   re_action(re, 1);
   aut_gen_dfa(a, w, false);
 }
 
-TEST(test_range) {
-  char* out = gen_ir(build_range);
-  // Should have range check for A-Z (65-90)
+TEST(test_append_ch) {
+  char* out = gen_ir(build_ch);
+  assert(strstr(out, "i32 65")); // 'A'
+  free(out);
+}
+
+static void build_ch_seq(Aut* a, Re* re, IrWriter* w) {
+  re_append_ch(re, 'H');
+  re_append_ch(re, 'i');
+  re_action(re, 1);
+  aut_gen_dfa(a, w, false);
+}
+
+TEST(test_append_ch_seq) {
+  char* out = gen_ir(build_ch_seq);
+  assert(strstr(out, "i32 72"));  // H
+  assert(strstr(out, "i32 105")); // i
+  free(out);
+}
+
+// --- re_append_range ---
+
+static void build_append_range(Aut* a, Re* re, IrWriter* w) {
+  ReRange* r = re_range_new();
+  re_range_add(r, 'A', 'Z');
+  re_append_range(re, r);
+  re_range_del(r);
+  re_action(re, 1);
+  aut_gen_dfa(a, w, false);
+}
+
+TEST(test_append_range) {
+  char* out = gen_ir(build_append_range);
   assert(strstr(out, "icmp sge i32 %cp, 65"));
   assert(strstr(out, "icmp sle i32 %cp, 90"));
   free(out);
 }
 
-// --- re_seq ---
-
-static void build_seq(Aut* a, Re* re, IrWriter* w) {
-  re_seq(re, (int32_t)'H', (int32_t)'i', (int32_t)-1);
+static void build_append_multi_range(Aut* a, Re* re, IrWriter* w) {
+  ReRange* r = re_range_new();
+  re_range_add(r, 'A', 'Z');
+  re_range_add(r, 'a', 'z');
+  re_append_range(re, r);
+  re_range_del(r);
   re_action(re, 1);
   aut_gen_dfa(a, w, false);
 }
 
-TEST(test_seq) {
-  char* out = gen_ir(build_seq);
-  // 'H'=72, 'i'=105 should both appear
-  assert(strstr(out, "i32 72"));
-  assert(strstr(out, "i32 105"));
+TEST(test_append_multi_range) {
+  char* out = gen_ir(build_append_multi_range);
+  // both ranges present
+  assert(strstr(out, "icmp sge i32 %cp, 65"));
+  assert(strstr(out, "icmp sle i32 %cp, 90"));
+  assert(strstr(out, "icmp sge i32 %cp, 97"));
+  assert(strstr(out, "icmp sle i32 %cp, 122"));
   free(out);
 }
 
-// --- re_lparen / re_rparen (single branch, grouping) ---
+// --- re_lparen / re_rparen ---
 
 static void build_group(Aut* a, Re* re, IrWriter* w) {
-  // (ab)c with action 1
   re_lparen(re);
-  re_seq(re, (int32_t)'a', (int32_t)'b', (int32_t)-1);
+  re_append_ch(re, 'a');
+  re_append_ch(re, 'b');
   re_rparen(re);
-  re_seq(re, (int32_t)'c', (int32_t)-1);
+  re_append_ch(re, 'c');
   re_action(re, 1);
   aut_gen_dfa(a, w, false);
 }
 
 TEST(test_group) {
   char* out = gen_ir(build_group);
-  // 'a'=97, 'b'=98, 'c'=99
   assert(strstr(out, "i32 97"));
   assert(strstr(out, "i32 98"));
   assert(strstr(out, "i32 99"));
   free(out);
 }
 
-// --- re_fork (alternation) ---
+// --- re_fork ---
 
 static void build_alt(Aut* a, Re* re, IrWriter* w) {
-  // (a|b) with action 1
   re_lparen(re);
-  re_seq(re, (int32_t)'a', (int32_t)-1);
+  re_append_ch(re, 'a');
   re_fork(re);
-  re_seq(re, (int32_t)'b', (int32_t)-1);
+  re_append_ch(re, 'b');
   re_rparen(re);
   re_action(re, 1);
   aut_gen_dfa(a, w, false);
@@ -263,7 +302,6 @@ static void build_alt(Aut* a, Re* re, IrWriter* w) {
 
 TEST(test_alt) {
   char* out = gen_ir(build_alt);
-  // Both 'a'=97 and 'b'=98 should reach a state with action 1
   assert(strstr(out, "i32 97"));
   assert(strstr(out, "i32 98"));
   free(out);
@@ -273,11 +311,13 @@ TEST(test_alt) {
 
 static void build_complex(Aut* a, Re* re, IrWriter* w) {
   re_lparen(re);
-  re_seq(re, (int32_t)'a', (int32_t)'b', (int32_t)-1);
+  re_append_ch(re, 'a');
+  re_append_ch(re, 'b');
   re_fork(re);
-  re_seq(re, (int32_t)'c', (int32_t)'d', (int32_t)-1);
+  re_append_ch(re, 'c');
+  re_append_ch(re, 'd');
   re_rparen(re);
-  re_seq(re, (int32_t)'e', (int32_t)-1);
+  re_append_ch(re, 'e');
   re_action(re, 1);
   aut_optimize(a);
   aut_gen_dfa(a, w, false);
@@ -286,7 +326,6 @@ static void build_complex(Aut* a, Re* re, IrWriter* w) {
 TEST(test_complex) {
   char* out = gen_ir(build_complex);
   assert(strstr(out, "define {i32, i32} @match"));
-  // all chars present
   assert(strstr(out, "i32 97"));  // a
   assert(strstr(out, "i32 98"));  // b
   assert(strstr(out, "i32 99"));  // c
@@ -298,14 +337,14 @@ TEST(test_complex) {
 // --- re_action ---
 
 static void build_action(Aut* a, Re* re, IrWriter* w) {
-  re_range(re, 'x', 'x');
+  re_append_ch(re, 'x');
   re_action(re, 42);
   aut_gen_dfa(a, w, false);
 }
 
 TEST(test_action) {
   char* out = gen_ir(build_action);
-  assert(strstr(out, "i32 42, 1")); // action_id=42 in insertvalue
+  assert(strstr(out, "i32 42, 1"));
   free(out);
 }
 
@@ -355,8 +394,10 @@ static void write_and_compile(void (*fn)(Aut*, Re*, IrWriter*), const char* test
   remove(ll_path);
 }
 
-TEST(test_compile_range) { write_and_compile(build_range, "range"); }
-TEST(test_compile_seq) { write_and_compile(build_seq, "seq"); }
+TEST(test_compile_ch) { write_and_compile(build_ch, "ch"); }
+TEST(test_compile_ch_seq) { write_and_compile(build_ch_seq, "ch_seq"); }
+TEST(test_compile_range) { write_and_compile(build_append_range, "range"); }
+TEST(test_compile_multi_range) { write_and_compile(build_append_multi_range, "multi_range"); }
 TEST(test_compile_group) { write_and_compile(build_group, "group"); }
 TEST(test_compile_alt) { write_and_compile(build_alt, "alt"); }
 TEST(test_compile_complex) { write_and_compile(build_complex, "complex"); }
@@ -365,23 +406,34 @@ TEST(test_compile_action) { write_and_compile(build_action, "action"); }
 int main(void) {
   printf("test_re:\n");
   RUN(test_lifecycle);
-  RUN(test_neg_empty);
-  RUN(test_neg_single);
-  RUN(test_neg_at_start);
-  RUN(test_neg_at_end);
-  RUN(test_neg_full);
-  RUN(test_neg_multiple);
-  RUN(test_neg_overlapping);
-  RUN(test_neg_adjacent);
-  RUN(test_neg_unsorted);
-  RUN(test_range);
-  RUN(test_seq);
+  RUN(test_range_lifecycle);
+  RUN(test_range_add_single);
+  RUN(test_range_add_disjoint);
+  RUN(test_range_add_disjoint_unsorted);
+  RUN(test_range_add_overlap);
+  RUN(test_range_add_adjacent);
+  RUN(test_range_add_subset);
+  RUN(test_range_add_superset);
+  RUN(test_range_add_merge_three);
+  RUN(test_range_neg_empty);
+  RUN(test_range_neg_full);
+  RUN(test_range_neg_single);
+  RUN(test_range_neg_at_start);
+  RUN(test_range_neg_at_end);
+  RUN(test_range_neg_multiple);
+  RUN(test_range_neg_double);
+  RUN(test_append_ch);
+  RUN(test_append_ch_seq);
+  RUN(test_append_range);
+  RUN(test_append_multi_range);
   RUN(test_group);
   RUN(test_alt);
   RUN(test_complex);
   RUN(test_action);
+  RUN(test_compile_ch);
+  RUN(test_compile_ch_seq);
   RUN(test_compile_range);
-  RUN(test_compile_seq);
+  RUN(test_compile_multi_range);
   RUN(test_compile_group);
   RUN(test_compile_alt);
   RUN(test_compile_complex);

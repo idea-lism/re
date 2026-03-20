@@ -220,7 +220,7 @@ TEST(test_iter_from_middle_multibyte) {
   assert(s != NULL);
 
   ustr_iter it;
-  ustr_iter_init(&it, s, 3);
+  ustr_iter_init(&it, s, 2);
   assert(it.cp_idx == 2);
   assert(ustr_iter_next(&it) == 0x20AC);
   assert(ustr_iter_next(&it) == 'b');
