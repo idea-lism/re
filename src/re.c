@@ -104,14 +104,14 @@ struct Re {
   int32_t stack_cap;
 };
 
-static int32_t alloc_state(Re* re) { return re->next_state++; }
+static int32_t _alloc_state(Re* re) { return re->next_state++; }
 
-static GroupFrame* top(Re* re) {
+static GroupFrame* _top(Re* re) {
   assert(re->stack_sz > 0);
   return &re->stack[re->stack_sz - 1];
 }
 
-static void push_frame(Re* re, int32_t start, int32_t cur) {
+static void _push_frame(Re* re, int32_t start, int32_t cur) {
   if (re->stack_sz == re->stack_cap) {
     re->stack_cap = re->stack_cap ? re->stack_cap * 2 : 8;
     re->stack = realloc(re->stack, (size_t)re->stack_cap * sizeof(GroupFrame));
@@ -125,7 +125,7 @@ static void push_frame(Re* re, int32_t start, int32_t cur) {
   };
 }
 
-static void save_branch_end(GroupFrame* f, int32_t state) {
+static void _save_branch_end(GroupFrame* f, int32_t state) {
   if (f->nbranch_ends == f->branch_ends_cap) {
     f->branch_ends_cap = f->branch_ends_cap ? f->branch_ends_cap * 2 : 4;
     f->branch_ends = realloc(f->branch_ends, (size_t)f->branch_ends_cap * sizeof(int32_t));
@@ -137,9 +137,9 @@ Re* re_new(Aut* aut) {
   Re* re = calloc(1, sizeof(Re));
   re->aut = aut;
   re->next_state = 0;
-  int32_t s0 = alloc_state(re);
+  int32_t s0 = _alloc_state(re);
   (void)s0;
-  push_frame(re, 0, 0);
+  _push_frame(re, 0, 0);
   return re;
 }
 
@@ -155,16 +155,16 @@ void re_del(Re* re) {
 }
 
 void re_append_ch(Re* re, int32_t codepoint) {
-  GroupFrame* f = top(re);
-  int32_t s = alloc_state(re);
+  GroupFrame* f = _top(re);
+  int32_t s = _alloc_state(re);
   aut_transition(re->aut, (TransitionDef){f->cur_state, s, codepoint, codepoint}, (DebugInfo){0, 0});
   f->cur_state = s;
 }
 
 void re_append_range(Re* re, ReRange* range) {
   assert(range->len > 0);
-  GroupFrame* f = top(re);
-  int32_t s = alloc_state(re);
+  GroupFrame* f = _top(re);
+  int32_t s = _alloc_state(re);
   for (int32_t i = 0; i < range->len; i++) {
     aut_transition(re->aut, (TransitionDef){f->cur_state, s, range->ivs[i].start, range->ivs[i].end},
                    (DebugInfo){0, 0});
@@ -173,27 +173,27 @@ void re_append_range(Re* re, ReRange* range) {
 }
 
 void re_lparen(Re* re) {
-  GroupFrame* f = top(re);
+  GroupFrame* f = _top(re);
   int32_t start = f->cur_state;
-  int32_t branch = alloc_state(re);
+  int32_t branch = _alloc_state(re);
   aut_epsilon(re->aut, start, branch, 0);
-  push_frame(re, start, branch);
+  _push_frame(re, start, branch);
 }
 
 void re_fork(Re* re) {
-  GroupFrame* f = top(re);
-  save_branch_end(f, f->cur_state);
-  int32_t branch = alloc_state(re);
+  GroupFrame* f = _top(re);
+  _save_branch_end(f, f->cur_state);
+  int32_t branch = _alloc_state(re);
   aut_epsilon(re->aut, f->start_state, branch, 0);
   f->cur_state = branch;
 }
 
 void re_rparen(Re* re) {
   assert(re->stack_sz > 1);
-  GroupFrame* f = top(re);
-  save_branch_end(f, f->cur_state);
+  GroupFrame* f = _top(re);
+  _save_branch_end(f, f->cur_state);
 
-  int32_t exit_state = alloc_state(re);
+  int32_t exit_state = _alloc_state(re);
   for (int32_t i = 0; i < f->nbranch_ends; i++) {
     aut_epsilon(re->aut, f->branch_ends[i], exit_state, 0);
   }
@@ -201,13 +201,13 @@ void re_rparen(Re* re) {
   free(f->branch_ends);
   re->stack_sz--;
 
-  GroupFrame* parent = top(re);
+  GroupFrame* parent = _top(re);
   parent->cur_state = exit_state;
 }
 
 void re_action(Re* re, int32_t action_id) {
-  GroupFrame* f = top(re);
-  int32_t s = alloc_state(re);
+  GroupFrame* f = _top(re);
+  int32_t s = _alloc_state(re);
   aut_epsilon(re->aut, f->cur_state, s, action_id);
   f->cur_state = s;
 }

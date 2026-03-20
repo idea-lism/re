@@ -8,10 +8,10 @@ struct Bitset {
   uint32_t n_chunks;
 };
 
-static uint32_t chunk_index(uint32_t offset) { return offset / 64; }
-static uint64_t chunk_mask(uint32_t offset) { return (uint64_t)1 << (offset % 64); }
+static uint32_t _chunk_index(uint32_t offset) { return offset / 64; }
+static uint64_t _chunk_mask(uint32_t offset) { return (uint64_t)1 << (offset % 64); }
 
-static void ensure_capacity(Bitset* bs, uint32_t chunk_idx) {
+static void _ensure_capacity(Bitset* bs, uint32_t chunk_idx) {
   if (chunk_idx < bs->n_chunks) {
     return;
   }
@@ -32,25 +32,25 @@ void bitset_del(Bitset* bs) {
 }
 
 void bitset_add_bit(Bitset* bs, uint32_t offset) {
-  uint32_t ci = chunk_index(offset);
-  ensure_capacity(bs, ci);
-  bs->chunks[ci] |= chunk_mask(offset);
+  uint32_t ci = _chunk_index(offset);
+  _ensure_capacity(bs, ci);
+  bs->chunks[ci] |= _chunk_mask(offset);
 }
 
 void bitset_clear_bit(Bitset* bs, uint32_t offset) {
-  uint32_t ci = chunk_index(offset);
+  uint32_t ci = _chunk_index(offset);
   if (ci >= bs->n_chunks) {
     return;
   }
-  bs->chunks[ci] &= ~chunk_mask(offset);
+  bs->chunks[ci] &= ~_chunk_mask(offset);
 }
 
 bool bitset_contains(Bitset* bs, uint32_t offset) {
-  uint32_t ci = chunk_index(offset);
+  uint32_t ci = _chunk_index(offset);
   if (ci >= bs->n_chunks) {
     return false;
   }
-  return (bs->chunks[ci] & chunk_mask(offset)) != 0;
+  return (bs->chunks[ci] & _chunk_mask(offset)) != 0;
 }
 
 Bitset* bitset_or(Bitset* s1, Bitset* s2) {

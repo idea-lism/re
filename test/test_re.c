@@ -14,7 +14,7 @@
 
 #define TARGET "arm64-apple-macosx14.0.0"
 
-static char* gen_ir(void (*fn)(Aut*, Re*, IrWriter*)) {
+static char* _gen_ir(void (*fn)(Aut*, Re*, IrWriter*)) {
   char* buf = NULL;
   size_t sz = 0;
   FILE* f = open_memstream(&buf, &sz);
@@ -204,19 +204,19 @@ TEST(test_range_neg_double) {
 
 // --- re_append_ch ---
 
-static void build_ch(Aut* a, Re* re, IrWriter* w) {
+static void _build_ch(Aut* a, Re* re, IrWriter* w) {
   re_append_ch(re, 'A');
   re_action(re, 1);
   aut_gen_dfa(a, w, false);
 }
 
 TEST(test_append_ch) {
-  char* out = gen_ir(build_ch);
+  char* out = _gen_ir(_build_ch);
   assert(strstr(out, "i32 65")); // 'A'
   free(out);
 }
 
-static void build_ch_seq(Aut* a, Re* re, IrWriter* w) {
+static void _build_ch_seq(Aut* a, Re* re, IrWriter* w) {
   re_append_ch(re, 'H');
   re_append_ch(re, 'i');
   re_action(re, 1);
@@ -224,7 +224,7 @@ static void build_ch_seq(Aut* a, Re* re, IrWriter* w) {
 }
 
 TEST(test_append_ch_seq) {
-  char* out = gen_ir(build_ch_seq);
+  char* out = _gen_ir(_build_ch_seq);
   assert(strstr(out, "i32 72"));  // H
   assert(strstr(out, "i32 105")); // i
   free(out);
@@ -232,7 +232,7 @@ TEST(test_append_ch_seq) {
 
 // --- re_append_range ---
 
-static void build_append_range(Aut* a, Re* re, IrWriter* w) {
+static void _build_append_range(Aut* a, Re* re, IrWriter* w) {
   ReRange* r = re_range_new();
   re_range_add(r, 'A', 'Z');
   re_append_range(re, r);
@@ -242,13 +242,13 @@ static void build_append_range(Aut* a, Re* re, IrWriter* w) {
 }
 
 TEST(test_append_range) {
-  char* out = gen_ir(build_append_range);
+  char* out = _gen_ir(_build_append_range);
   assert(strstr(out, "icmp sge i32 %cp, 65"));
   assert(strstr(out, "icmp sle i32 %cp, 90"));
   free(out);
 }
 
-static void build_append_multi_range(Aut* a, Re* re, IrWriter* w) {
+static void _build_append_multi_range(Aut* a, Re* re, IrWriter* w) {
   ReRange* r = re_range_new();
   re_range_add(r, 'A', 'Z');
   re_range_add(r, 'a', 'z');
@@ -259,7 +259,7 @@ static void build_append_multi_range(Aut* a, Re* re, IrWriter* w) {
 }
 
 TEST(test_append_multi_range) {
-  char* out = gen_ir(build_append_multi_range);
+  char* out = _gen_ir(_build_append_multi_range);
   // both ranges present
   assert(strstr(out, "icmp sge i32 %cp, 65"));
   assert(strstr(out, "icmp sle i32 %cp, 90"));
@@ -270,7 +270,7 @@ TEST(test_append_multi_range) {
 
 // --- re_lparen / re_rparen ---
 
-static void build_group(Aut* a, Re* re, IrWriter* w) {
+static void _build_group(Aut* a, Re* re, IrWriter* w) {
   re_lparen(re);
   re_append_ch(re, 'a');
   re_append_ch(re, 'b');
@@ -281,7 +281,7 @@ static void build_group(Aut* a, Re* re, IrWriter* w) {
 }
 
 TEST(test_group) {
-  char* out = gen_ir(build_group);
+  char* out = _gen_ir(_build_group);
   assert(strstr(out, "i32 97"));
   assert(strstr(out, "i32 98"));
   assert(strstr(out, "i32 99"));
@@ -290,7 +290,7 @@ TEST(test_group) {
 
 // --- re_fork ---
 
-static void build_alt(Aut* a, Re* re, IrWriter* w) {
+static void _build_alt(Aut* a, Re* re, IrWriter* w) {
   re_lparen(re);
   re_append_ch(re, 'a');
   re_fork(re);
@@ -301,7 +301,7 @@ static void build_alt(Aut* a, Re* re, IrWriter* w) {
 }
 
 TEST(test_alt) {
-  char* out = gen_ir(build_alt);
+  char* out = _gen_ir(_build_alt);
   assert(strstr(out, "i32 97"));
   assert(strstr(out, "i32 98"));
   free(out);
@@ -309,7 +309,7 @@ TEST(test_alt) {
 
 // --- Complex: (ab|cd)e ---
 
-static void build_complex(Aut* a, Re* re, IrWriter* w) {
+static void _build_complex(Aut* a, Re* re, IrWriter* w) {
   re_lparen(re);
   re_append_ch(re, 'a');
   re_append_ch(re, 'b');
@@ -324,7 +324,7 @@ static void build_complex(Aut* a, Re* re, IrWriter* w) {
 }
 
 TEST(test_complex) {
-  char* out = gen_ir(build_complex);
+  char* out = _gen_ir(_build_complex);
   assert(strstr(out, "define {i32, i32} @match"));
   assert(strstr(out, "i32 97"));  // a
   assert(strstr(out, "i32 98"));  // b
@@ -336,21 +336,21 @@ TEST(test_complex) {
 
 // --- re_action ---
 
-static void build_action(Aut* a, Re* re, IrWriter* w) {
+static void _build_action(Aut* a, Re* re, IrWriter* w) {
   re_append_ch(re, 'x');
   re_action(re, 42);
   aut_gen_dfa(a, w, false);
 }
 
 TEST(test_action) {
-  char* out = gen_ir(build_action);
+  char* out = _gen_ir(_build_action);
   assert(strstr(out, "i32 42, 1"));
   free(out);
 }
 
 // --- Clang compilation ---
 
-static void write_and_compile(void (*fn)(Aut*, Re*, IrWriter*), const char* test_name) {
+static void _write_and_compile(void (*fn)(Aut*, Re*, IrWriter*), const char* test_name) {
   char ll_path[128], obj_path[128];
   snprintf(ll_path, sizeof(ll_path), "/tmp/test_re_%s.ll", test_name);
   snprintf(obj_path, sizeof(obj_path), "/tmp/test_re_%s.o", test_name);
@@ -394,14 +394,14 @@ static void write_and_compile(void (*fn)(Aut*, Re*, IrWriter*), const char* test
   remove(ll_path);
 }
 
-TEST(test_compile_ch) { write_and_compile(build_ch, "ch"); }
-TEST(test_compile_ch_seq) { write_and_compile(build_ch_seq, "ch_seq"); }
-TEST(test_compile_range) { write_and_compile(build_append_range, "range"); }
-TEST(test_compile_multi_range) { write_and_compile(build_append_multi_range, "multi_range"); }
-TEST(test_compile_group) { write_and_compile(build_group, "group"); }
-TEST(test_compile_alt) { write_and_compile(build_alt, "alt"); }
-TEST(test_compile_complex) { write_and_compile(build_complex, "complex"); }
-TEST(test_compile_action) { write_and_compile(build_action, "action"); }
+TEST(test_compile_ch) { _write_and_compile(_build_ch, "ch"); }
+TEST(test_compile_ch_seq) { _write_and_compile(_build_ch_seq, "ch_seq"); }
+TEST(test_compile_range) { _write_and_compile(_build_append_range, "range"); }
+TEST(test_compile_multi_range) { _write_and_compile(_build_append_multi_range, "multi_range"); }
+TEST(test_compile_group) { _write_and_compile(_build_group, "group"); }
+TEST(test_compile_alt) { _write_and_compile(_build_alt, "alt"); }
+TEST(test_compile_complex) { _write_and_compile(_build_complex, "complex"); }
+TEST(test_compile_action) { _write_and_compile(_build_action, "action"); }
 
 int main(void) {
   printf("test_re:\n");

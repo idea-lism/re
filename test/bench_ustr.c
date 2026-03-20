@@ -5,19 +5,19 @@
 #include <string.h>
 #include <time.h>
 
-static double now_sec(void) {
+static double _now_sec(void) {
   struct timespec ts;
   clock_gettime(CLOCK_MONOTONIC, &ts);
   return ts.tv_sec + ts.tv_nsec * 1e-9;
 }
 
-static void fill_ascii(char* buf, size_t sz) {
+static void _fill_ascii(char* buf, size_t sz) {
   for (size_t i = 0; i < sz; i++) {
     buf[i] = 'A' + (i % 26);
   }
 }
 
-static void fill_mixed(char* buf, size_t sz) {
+static void _fill_mixed(char* buf, size_t sz) {
   const char unit[] = "a\xC3\xA9\xE2\x82\xAC\xF0\x9F\x98\x80";
   size_t ulen = sizeof(unit) - 1;
   for (size_t i = 0; i < sz;) {
@@ -30,7 +30,7 @@ static void fill_mixed(char* buf, size_t sz) {
   }
 }
 
-static void fill_cjk(char* buf, size_t sz) {
+static void _fill_cjk(char* buf, size_t sz) {
   for (size_t i = 0; i + 3 <= sz; i += 3) {
     buf[i + 0] = '\xE4';
     buf[i + 1] = '\xB8';
@@ -40,27 +40,27 @@ static void fill_cjk(char* buf, size_t sz) {
 
 typedef int (*validate_fn)(const uint8_t*, size_t, uint8_t*);
 
-static double bench_validate(validate_fn fn, const char* data, size_t sz, int iters) {
+static double _bench_validate(validate_fn fn, const char* data, size_t sz, int iters) {
   size_t mark_sz = (sz + 7) / 8;
   uint8_t* marks = (uint8_t*)calloc(1, mark_sz);
 
-  double start = now_sec();
+  double start = _now_sec();
   for (int i = 0; i < iters; i++) {
     memset(marks, 0, mark_sz);
     fn((const uint8_t*)data, sz, marks);
   }
-  double elapsed = now_sec() - start;
+  double elapsed = _now_sec() - start;
   free(marks);
   return elapsed;
 }
 
-static void run_validate_bench(const char* label, const char* data, size_t sz) {
+static void _run_validate_bench(const char* label, const char* data, size_t sz) {
   int iters = 1000;
-  bench_validate(ustr_validate_scalar, data, sz, 10);
-  bench_validate(ustr_validate, data, sz, 10);
+  _bench_validate(ustr_validate_scalar, data, sz, 10);
+  _bench_validate(ustr_validate, data, sz, 10);
 
-  double t_scalar = bench_validate(ustr_validate_scalar, data, sz, iters);
-  double t_neon = bench_validate(ustr_validate, data, sz, iters);
+  double t_scalar = _bench_validate(ustr_validate_scalar, data, sz, iters);
+  double t_neon = _bench_validate(ustr_validate, data, sz, iters);
 
   double scalar_ns = (t_scalar / iters) / sz * 1e9;
   double neon_ns = (t_neon / iters) / sz * 1e9;
@@ -72,7 +72,7 @@ static void run_validate_bench(const char* label, const char* data, size_t sz) {
 
 // --- cplen benchmark ---
 
-static void bench_cplen(const char* label, size_t sz, char* (*make)(size_t)) {
+static void _bench_cplen(const char* label, size_t sz, char* (*make)(size_t)) {
   char* s = make(sz);
   if (!s) {
     printf("%-20s  SKIP (ustr_new failed)\n", label);
@@ -89,17 +89,17 @@ static void bench_cplen(const char* label, size_t sz, char* (*make)(size_t)) {
     sink = ustr_size_naive(s);
   }
 
-  double t0 = now_sec();
+  double t0 = _now_sec();
   for (int i = 0; i < iters; i++) {
     sink = ustr_size(s);
   }
-  double t_popcnt = now_sec() - t0;
+  double t_popcnt = _now_sec() - t0;
 
-  t0 = now_sec();
+  t0 = _now_sec();
   for (int i = 0; i < iters; i++) {
     sink = ustr_size_naive(s);
   }
-  double t_naive = now_sec() - t0;
+  double t_naive = _now_sec() - t0;
 
   (void)sink;
   double speedup = t_naive / t_popcnt;
@@ -111,7 +111,7 @@ static void bench_cplen(const char* label, size_t sz, char* (*make)(size_t)) {
 
 // --- slice benchmark ---
 
-static void bench_slice(const char* label, size_t sz, char* (*make)(size_t)) {
+static void _bench_slice(const char* label, size_t sz, char* (*make)(size_t)) {
   char* s = make(sz);
   if (!s) {
     printf("%-20s  SKIP\n", label);
@@ -133,19 +133,19 @@ static void bench_slice(const char* label, size_t sz, char* (*make)(size_t)) {
     ustr_del(t);
   }
 
-  double t0 = now_sec();
+  double t0 = _now_sec();
   for (int i = 0; i < iters; i++) {
     char* t = ustr_slice(s, quarter, mid);
     ustr_del(t);
   }
-  double t_popcnt = now_sec() - t0;
+  double t_popcnt = _now_sec() - t0;
 
-  t0 = now_sec();
+  t0 = _now_sec();
   for (int i = 0; i < iters; i++) {
     char* t = ustr_slice_naive(s, quarter, mid);
     ustr_del(t);
   }
-  double t_naive = now_sec() - t0;
+  double t_naive = _now_sec() - t0;
 
   double speedup = t_naive / t_popcnt;
   printf("%-20s  %8zu bytes  naive: %8.1f ns  popcnt: %8.1f ns  speedup: %.2fx\n", label, sz, t_naive / iters * 1e9,
@@ -156,26 +156,26 @@ static void bench_slice(const char* label, size_t sz, char* (*make)(size_t)) {
 
 // --- Factories ---
 
-static char* make_ascii(size_t sz) {
+static char* _make_ascii(size_t sz) {
   char* buf = (char*)malloc(sz);
-  fill_ascii(buf, sz);
+  _fill_ascii(buf, sz);
   char* s = ustr_new(sz, buf);
   free(buf);
   return s;
 }
 
-static char* make_mixed(size_t sz) {
+static char* _make_mixed(size_t sz) {
   char* buf = (char*)malloc(sz);
-  fill_mixed(buf, sz);
+  _fill_mixed(buf, sz);
   size_t msz = (sz / 10) * 10;
   char* s = ustr_new(msz, buf);
   free(buf);
   return s;
 }
 
-static char* make_cjk(size_t sz) {
+static char* _make_cjk(size_t sz) {
   char* buf = (char*)calloc(1, sz);
-  fill_cjk(buf, sz);
+  _fill_cjk(buf, sz);
   size_t csz = (sz / 3) * 3;
   char* s = ustr_new(csz, buf);
   free(buf);
@@ -192,19 +192,19 @@ int main(void) {
     size_t sz = sizes[si];
     char* buf = (char*)malloc(sz);
 
-    fill_ascii(buf, sz);
-    run_validate_bench("ascii", buf, sz);
+    _fill_ascii(buf, sz);
+    _run_validate_bench("ascii", buf, sz);
 
-    fill_mixed(buf, sz);
+    _fill_mixed(buf, sz);
     size_t msz = (sz / 10) * 10;
     if (msz > 0) {
-      run_validate_bench("mixed", buf, msz);
+      _run_validate_bench("mixed", buf, msz);
     }
 
-    fill_cjk(buf, sz);
+    _fill_cjk(buf, sz);
     size_t csz = (sz / 3) * 3;
     if (csz > 0) {
-      run_validate_bench("cjk", buf, csz);
+      _run_validate_bench("cjk", buf, csz);
     }
 
     printf("\n");
@@ -215,9 +215,9 @@ int main(void) {
 
   for (int si = 0; si < nsizes; si++) {
     size_t sz = sizes[si];
-    bench_cplen("ascii", sz, make_ascii);
-    bench_cplen("mixed", sz, make_mixed);
-    bench_cplen("cjk", sz, make_cjk);
+    _bench_cplen("ascii", sz, _make_ascii);
+    _bench_cplen("mixed", sz, _make_mixed);
+    _bench_cplen("cjk", sz, _make_cjk);
     printf("\n");
   }
 
@@ -225,9 +225,9 @@ int main(void) {
 
   for (int si = 0; si < nsizes; si++) {
     size_t sz = sizes[si];
-    bench_slice("ascii", sz, make_ascii);
-    bench_slice("mixed", sz, make_mixed);
-    bench_slice("cjk", sz, make_cjk);
+    _bench_slice("ascii", sz, _make_ascii);
+    _bench_slice("mixed", sz, _make_mixed);
+    _bench_slice("cjk", sz, _make_cjk);
     printf("\n");
   }
 

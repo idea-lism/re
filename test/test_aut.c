@@ -14,7 +14,7 @@
 
 #define TARGET "arm64-apple-macosx14.0.0"
 
-static char* gen_ir(void (*fn)(Aut*, IrWriter*)) {
+static char* _gen_ir(void (*fn)(Aut*, IrWriter*)) {
   char* buf = NULL;
   size_t sz = 0;
   FILE* f = open_memstream(&buf, &sz);
@@ -34,14 +34,14 @@ static char* gen_ir(void (*fn)(Aut*, IrWriter*)) {
 
 // --- Basic: single transition ---
 
-static void build_single(Aut* a, IrWriter* w) {
+static void _build_single(Aut* a, IrWriter* w) {
   aut_transition(a, (TransitionDef){0, 1, 'A', 'A'}, (DebugInfo){1, 1});
   aut_epsilon(a, 1, 2, 1);
   aut_gen_dfa(a, w, false);
 }
 
 TEST(test_single_transition) {
-  char* out = gen_ir(build_single);
+  char* out = _gen_ir(_build_single);
   assert(strstr(out, "define {i32, i32} @match(i32 %state, i32 %cp)"));
   assert(strstr(out, "switch i32 %state, label %dead"));
   // State 0 should have a switch on cp with case 65 ('A')
@@ -53,14 +53,14 @@ TEST(test_single_transition) {
 
 // --- Range transition ---
 
-static void build_range(Aut* a, IrWriter* w) {
+static void _build_range(Aut* a, IrWriter* w) {
   aut_transition(a, (TransitionDef){0, 1, 'A', 'Z'}, (DebugInfo){1, 1});
   aut_epsilon(a, 1, 2, 1);
   aut_gen_dfa(a, w, false);
 }
 
 TEST(test_range_transition) {
-  char* out = gen_ir(build_range);
+  char* out = _gen_ir(_build_range);
   // Should use range check: icmp sge ... 65, icmp sle ... 90
   assert(strstr(out, "icmp sge i32 %cp, 65"));
   assert(strstr(out, "icmp sle i32 %cp, 90"));
@@ -69,7 +69,7 @@ TEST(test_range_transition) {
 
 // --- Multiple transitions from one state ---
 
-static void build_multi(Aut* a, IrWriter* w) {
+static void _build_multi(Aut* a, IrWriter* w) {
   aut_transition(a, (TransitionDef){0, 1, 'A', 'Z'}, (DebugInfo){1, 1});
   aut_epsilon(a, 1, 3, 1);
   aut_transition(a, (TransitionDef){0, 2, 'a', 'z'}, (DebugInfo){2, 1});
@@ -78,7 +78,7 @@ static void build_multi(Aut* a, IrWriter* w) {
 }
 
 TEST(test_multi_transitions) {
-  char* out = gen_ir(build_multi);
+  char* out = _gen_ir(_build_multi);
   // Two range checks
   assert(strstr(out, "icmp sge i32 %cp, 65"));
   assert(strstr(out, "icmp sle i32 %cp, 90"));
@@ -89,7 +89,7 @@ TEST(test_multi_transitions) {
 
 // --- Epsilon transitions ---
 
-static void build_epsilon(Aut* a, IrWriter* w) {
+static void _build_epsilon(Aut* a, IrWriter* w) {
   // State 0 --eps--> state 1, state 1 --'x'--> state 2 with action 1
   aut_epsilon(a, 0, 1, 0);
   aut_transition(a, (TransitionDef){1, 2, 'x', 'x'}, (DebugInfo){1, 1});
@@ -98,7 +98,7 @@ static void build_epsilon(Aut* a, IrWriter* w) {
 }
 
 TEST(test_epsilon) {
-  char* out = gen_ir(build_epsilon);
+  char* out = _gen_ir(_build_epsilon);
   // After determinization, DFA state 0 = {NFA 0, NFA 1} (eps closure).
   // So from DFA state 0, input 'x' should go somewhere with action 1.
   assert(strstr(out, "i32 120")); // 'x' = 120
@@ -107,7 +107,7 @@ TEST(test_epsilon) {
 
 // --- Special codepoints ---
 
-static void build_special_cp(Aut* a, IrWriter* w) {
+static void _build_special_cp(Aut* a, IrWriter* w) {
   aut_transition(a, (TransitionDef){0, 1, -1, -1}, (DebugInfo){1, 1}); // BOF
   aut_transition(a, (TransitionDef){1, 2, 'a', 'z'}, (DebugInfo){1, 5});
   aut_epsilon(a, 2, 3, 1);
@@ -117,7 +117,7 @@ static void build_special_cp(Aut* a, IrWriter* w) {
 }
 
 TEST(test_special_codepoints) {
-  char* out = gen_ir(build_special_cp);
+  char* out = _gen_ir(_build_special_cp);
   // BOF = -1, EOF = -2 treated as normal codepoints
   assert(strstr(out, "-1"));
   assert(strstr(out, "-2"));
@@ -127,7 +127,7 @@ TEST(test_special_codepoints) {
 // --- Dead state ---
 
 TEST(test_dead_state) {
-  char* out = gen_ir(build_single);
+  char* out = _gen_ir(_build_single);
   // Dead state should return {state, -2}
   assert(strstr(out, "dead:"));
   free(out);
@@ -135,7 +135,7 @@ TEST(test_dead_state) {
 
 // --- Action ID: smallest returned ---
 
-static void build_action_smallest(Aut* a, IrWriter* w) {
+static void _build_action_smallest(Aut* a, IrWriter* w) {
   // Two transitions from state 0 on overlapping range, different actions
   // action 5 on [A-Z], action 3 on [M-M]
   aut_transition(a, (TransitionDef){0, 1, 'A', 'Z'}, (DebugInfo){1, 1});
@@ -146,7 +146,7 @@ static void build_action_smallest(Aut* a, IrWriter* w) {
 }
 
 TEST(test_action_smallest) {
-  char* out = gen_ir(build_action_smallest);
+  char* out = _gen_ir(_build_action_smallest);
   // For 'M' (77), we expect the NFA has both transitions matching.
   // The determinized transition for the sub-interval covering 'M' should pick action_id=3 (smallest).
   // Check that 3 appears as an action_id insertvalue
@@ -156,14 +156,14 @@ TEST(test_action_smallest) {
 
 // --- Debug info ---
 
-static void build_debug(Aut* a, IrWriter* w) {
+static void _build_debug(Aut* a, IrWriter* w) {
   aut_transition(a, (TransitionDef){0, 1, 'A', 'A'}, (DebugInfo){10, 5});
   aut_epsilon(a, 1, 2, 1);
   aut_gen_dfa(a, w, false);
 }
 
 TEST(test_debug_info) {
-  char* out = gen_ir(build_debug);
+  char* out = _gen_ir(_build_debug);
   assert(strstr(out, "DILocation(line: 10, column: 5"));
   assert(strstr(out, "DISubprogram(name: \"match\""));
   free(out);
@@ -171,14 +171,14 @@ TEST(test_debug_info) {
 
 // --- Debug trap on dead state ---
 
-static void build_debug_trap(Aut* a, IrWriter* w) {
+static void _build_debug_trap(Aut* a, IrWriter* w) {
   aut_transition(a, (TransitionDef){0, 1, 'A', 'A'}, (DebugInfo){1, 1});
   aut_epsilon(a, 1, 2, 1);
   aut_gen_dfa(a, w, true);
 }
 
 TEST(test_debug_trap) {
-  char* out = gen_ir(build_debug_trap);
+  char* out = _gen_ir(_build_debug_trap);
   assert(strstr(out, "declare void @llvm.debugtrap()"));
   assert(strstr(out, "call void @llvm.debugtrap()"));
   free(out);
@@ -186,7 +186,7 @@ TEST(test_debug_trap) {
 
 // --- Optimize (Brzozowski) ---
 
-static void build_redundant(Aut* a, IrWriter* w) {
+static void _build_redundant(Aut* a, IrWriter* w) {
   // Create redundant NFA: states 0,1,2 where 1 and 2 behave identically
   // 0 --'a'--> 1, 0 --'b'--> 2
   // 1 --'c'--> 3 (action 1), 2 --'c'--> 3 (action 1)
@@ -201,7 +201,7 @@ static void build_redundant(Aut* a, IrWriter* w) {
 }
 
 TEST(test_optimize) {
-  char* out = gen_ir(build_redundant);
+  char* out = _gen_ir(_build_redundant);
   // After Brzozowski, states 1 and 2 should be merged.
   // The IR should still be valid and contain the expected structure.
   assert(strstr(out, "define {i32, i32} @match"));
@@ -238,7 +238,7 @@ TEST(test_optimize_reduces_states) {
 
 // --- Clang compilation ---
 
-static void write_and_compile(void (*fn)(Aut*, IrWriter*), const char* test_name) {
+static void _write_and_compile(void (*fn)(Aut*, IrWriter*), const char* test_name) {
   char ll_path[128], obj_path[128];
   snprintf(ll_path, sizeof(ll_path), "/tmp/test_aut_%s.ll", test_name);
   snprintf(obj_path, sizeof(obj_path), "/tmp/test_aut_%s.o", test_name);
@@ -280,21 +280,21 @@ static void write_and_compile(void (*fn)(Aut*, IrWriter*), const char* test_name
   remove(ll_path);
 }
 
-TEST(test_compile_single) { write_and_compile(build_single, "single"); }
+TEST(test_compile_single) { _write_and_compile(_build_single, "single"); }
 
-TEST(test_compile_range) { write_and_compile(build_range, "range"); }
+TEST(test_compile_range) { _write_and_compile(_build_range, "range"); }
 
-TEST(test_compile_multi) { write_and_compile(build_multi, "multi"); }
+TEST(test_compile_multi) { _write_and_compile(_build_multi, "multi"); }
 
-TEST(test_compile_epsilon) { write_and_compile(build_epsilon, "epsilon"); }
+TEST(test_compile_epsilon) { _write_and_compile(_build_epsilon, "epsilon"); }
 
-TEST(test_compile_special) { write_and_compile(build_special_cp, "special"); }
+TEST(test_compile_special) { _write_and_compile(_build_special_cp, "special"); }
 
-TEST(test_compile_optimize) { write_and_compile(build_redundant, "optimize"); }
+TEST(test_compile_optimize) { _write_and_compile(_build_redundant, "optimize"); }
 
-TEST(test_compile_debug) { write_and_compile(build_debug, "debug"); }
+TEST(test_compile_debug) { _write_and_compile(_build_debug, "debug"); }
 
-TEST(test_compile_debug_trap) { write_and_compile(build_debug_trap, "debug_trap"); }
+TEST(test_compile_debug_trap) { _write_and_compile(_build_debug_trap, "debug_trap"); }
 
 // --- Lifecycle ---
 

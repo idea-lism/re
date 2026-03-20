@@ -14,8 +14,8 @@
 
 #define TARGET "arm64-apple-macosx14.0.0"
 
-// Helper: capture irwriter output into a malloc'd string
-static char* capture(void (*fn)(IrWriter*)) {
+// Helper: _capture irwriter output into a malloc'd string
+static char* _capture(void (*fn)(IrWriter*)) {
   char* buf = NULL;
   size_t sz = 0;
   FILE* f = open_memstream(&buf, &sz);
@@ -29,16 +29,16 @@ static char* capture(void (*fn)(IrWriter*)) {
 
 // --- Tests ---
 
-static void emit_module_prelude(IrWriter* w) { irwriter_start(w, "test.ll", "."); }
+static void _emit_module_prelude(IrWriter* w) { irwriter_start(w, "test.ll", "."); }
 
 TEST(test_module_prelude) {
-  char* out = capture(emit_module_prelude);
+  char* out = _capture(_emit_module_prelude);
   assert(strstr(out, "source_filename = \"test.ll\""));
   assert(strstr(out, "target triple = \"arm64-apple-macosx14.0.0\""));
   free(out);
 }
 
-static void emit_simple_function(IrWriter* w) {
+static void _emit_simple_function(IrWriter* w) {
   irwriter_start(w, "test.ll", ".");
 
   const char* arg_types[] = {"i32", "i32"};
@@ -53,7 +53,7 @@ static void emit_simple_function(IrWriter* w) {
 }
 
 TEST(test_simple_function) {
-  char* out = capture(emit_simple_function);
+  char* out = _capture(_emit_simple_function);
   assert(strstr(out, "define {i32, i32} @match(i32 %state, i32 %cp)"));
   assert(strstr(out, "entry:"));
   assert(strstr(out, "ret {i32, i32} undef"));
@@ -61,7 +61,7 @@ TEST(test_simple_function) {
   free(out);
 }
 
-static void emit_binop(IrWriter* w) {
+static void _emit_binop(IrWriter* w) {
   irwriter_start(w, "test.ll", ".");
   const char* arg_types[] = {"i32"};
   const char* arg_names[] = {"x"};
@@ -81,14 +81,14 @@ static void emit_binop(IrWriter* w) {
 }
 
 TEST(test_binop) {
-  char* out = capture(emit_binop);
+  char* out = _capture(_emit_binop);
   assert(strstr(out, "%r0 = add i32 %x, 1"));
   assert(strstr(out, "%r1 = mul i32 %x, %r0"));
   assert(strstr(out, "ret i32 %r1"));
   free(out);
 }
 
-static void emit_icmp_branch(IrWriter* w) {
+static void _emit_icmp_branch(IrWriter* w) {
   irwriter_start(w, "test.ll", ".");
   const char* arg_types[] = {"i32"};
   const char* arg_names[] = {"x"};
@@ -114,7 +114,7 @@ static void emit_icmp_branch(IrWriter* w) {
 }
 
 TEST(test_icmp_branch) {
-  char* out = capture(emit_icmp_branch);
+  char* out = _capture(_emit_icmp_branch);
   assert(strstr(out, "%r0 = icmp sge i32 %x, 0"));
   assert(strstr(out, "br i1 %r0, label %positive, label %negative"));
   assert(strstr(out, "positive:"));
@@ -122,7 +122,7 @@ TEST(test_icmp_branch) {
   free(out);
 }
 
-static void emit_switch(IrWriter* w) {
+static void _emit_switch(IrWriter* w) {
   irwriter_start(w, "test.ll", ".");
   const char* arg_types[] = {"i32"};
   const char* arg_names[] = {"s"};
@@ -151,7 +151,7 @@ static void emit_switch(IrWriter* w) {
 }
 
 TEST(test_switch) {
-  char* out = capture(emit_switch);
+  char* out = _capture(_emit_switch);
   assert(strstr(out, "switch i32 %s, label %dead ["));
   assert(strstr(out, "i32 0, label %state0"));
   assert(strstr(out, "i32 1, label %state1"));
@@ -159,7 +159,7 @@ TEST(test_switch) {
   free(out);
 }
 
-static void emit_insertvalue(IrWriter* w) {
+static void _emit_insertvalue(IrWriter* w) {
   irwriter_start(w, "test.ll", ".");
   const char* arg_types[] = {"i32", "i32"};
   const char* arg_names[] = {"state", "cp"};
@@ -179,14 +179,14 @@ static void emit_insertvalue(IrWriter* w) {
 }
 
 TEST(test_insertvalue) {
-  char* out = capture(emit_insertvalue);
+  char* out = _capture(_emit_insertvalue);
   assert(strstr(out, "%r0 = insertvalue {i32, i32} undef, i32 1, 0"));
   assert(strstr(out, "%r1 = insertvalue {i32, i32} %r0, i32 0, 1"));
   assert(strstr(out, "ret {i32, i32} %r1"));
   free(out);
 }
 
-static void emit_debug_locations(IrWriter* w) {
+static void _emit_debug_locations(IrWriter* w) {
   irwriter_start(w, "test.ll", ".");
   const char* arg_types[] = {"i32"};
   const char* arg_names[] = {"x"};
@@ -203,7 +203,7 @@ static void emit_debug_locations(IrWriter* w) {
 }
 
 TEST(test_debug_locations) {
-  char* out = capture(emit_debug_locations);
+  char* out = _capture(_emit_debug_locations);
   // Instructions should have !dbg references
   assert(strstr(out, "!dbg !"));
   // Metadata should contain DILocation
@@ -218,7 +218,7 @@ TEST(test_debug_locations) {
 }
 
 // Full DFA-style function: mimics what aut_gen_dfa would produce
-static void emit_dfa_function(IrWriter* w) {
+static void _emit_dfa_function(IrWriter* w) {
   irwriter_start(w, "dfa.rules", ".");
 
   const char* arg_types[] = {"i32", "i32"};
@@ -284,7 +284,7 @@ static void emit_dfa_function(IrWriter* w) {
 }
 
 TEST(test_dfa_function) {
-  char* out = capture(emit_dfa_function);
+  char* out = _capture(_emit_dfa_function);
   // Structural checks
   assert(strstr(out, "define {i32, i32} @match(i32 %state, i32 %cp)"));
   assert(strstr(out, "switch i32 %state, label %dead"));

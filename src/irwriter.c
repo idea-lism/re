@@ -65,14 +65,14 @@ void irwriter_end(IrWriter* w) {
   (void)w;
 }
 
-static const char* next_reg(IrWriter* w) {
+static const char* _next_reg(IrWriter* w) {
   int idx = w->buf_idx;
   w->buf_idx = 1 - idx;
   snprintf(w->buf[idx], sizeof(w->buf[idx]), "%%r%d", w->reg++);
   return w->buf[idx];
 }
 
-static void push_loc(IrWriter* w, int id, int32_t line, int32_t col, int scope_id) {
+static void _push_loc(IrWriter* w, int id, int32_t line, int32_t col, int scope_id) {
   if (w->nlocs == w->locs_cap) {
     w->locs_cap = w->locs_cap ? w->locs_cap * 2 : 64;
     w->locs = realloc(w->locs, (size_t)w->locs_cap * sizeof(PendingLoc));
@@ -81,16 +81,16 @@ static void push_loc(IrWriter* w, int id, int32_t line, int32_t col, int scope_i
 }
 
 // Reserve a metadata id for the current debug location. Returns -1 if none set.
-static int reserve_dbg(IrWriter* w) {
+static int _reserve_dbg(IrWriter* w) {
   if (w->dbg_line < 0) {
     return -1;
   }
   int id = w->dbg_next_id++;
-  push_loc(w, id, w->dbg_line, w->dbg_col, w->dbg_sub_id);
+  _push_loc(w, id, w->dbg_line, w->dbg_col, w->dbg_sub_id);
   return id;
 }
 
-static void emit_dbg_suffix(IrWriter* w, int id) {
+static void _emit_dbg_suffix(IrWriter* w, int id) {
   if (id >= 0) {
     fprintf(w->out, ", !dbg !%d", id);
   }
@@ -163,57 +163,57 @@ void irwriter_dbg(IrWriter* w, int32_t line, int32_t col) {
 }
 
 const char* irwriter_binop(IrWriter* w, const char* op, const char* ty, const char* lhs, const char* rhs) {
-  const char* r = next_reg(w);
-  int dbg = reserve_dbg(w);
+  const char* r = _next_reg(w);
+  int dbg = _reserve_dbg(w);
   fprintf(w->out, "  %s = %s %s %s, %s", r, op, ty, lhs, rhs);
-  emit_dbg_suffix(w, dbg);
+  _emit_dbg_suffix(w, dbg);
   fprintf(w->out, "\n");
   return r;
 }
 
 const char* irwriter_binop_imm(IrWriter* w, const char* op, const char* ty, const char* lhs, int64_t rhs) {
-  const char* r = next_reg(w);
-  int dbg = reserve_dbg(w);
+  const char* r = _next_reg(w);
+  int dbg = _reserve_dbg(w);
   fprintf(w->out, "  %s = %s %s %s, %lld", r, op, ty, lhs, (long long)rhs);
-  emit_dbg_suffix(w, dbg);
+  _emit_dbg_suffix(w, dbg);
   fprintf(w->out, "\n");
   return r;
 }
 
 const char* irwriter_icmp(IrWriter* w, const char* pred, const char* ty, const char* lhs, const char* rhs) {
-  const char* r = next_reg(w);
-  int dbg = reserve_dbg(w);
+  const char* r = _next_reg(w);
+  int dbg = _reserve_dbg(w);
   fprintf(w->out, "  %s = icmp %s %s %s, %s", r, pred, ty, lhs, rhs);
-  emit_dbg_suffix(w, dbg);
+  _emit_dbg_suffix(w, dbg);
   fprintf(w->out, "\n");
   return r;
 }
 
 const char* irwriter_icmp_imm(IrWriter* w, const char* pred, const char* ty, const char* lhs, int64_t rhs) {
-  const char* r = next_reg(w);
-  int dbg = reserve_dbg(w);
+  const char* r = _next_reg(w);
+  int dbg = _reserve_dbg(w);
   fprintf(w->out, "  %s = icmp %s %s %s, %lld", r, pred, ty, lhs, (long long)rhs);
-  emit_dbg_suffix(w, dbg);
+  _emit_dbg_suffix(w, dbg);
   fprintf(w->out, "\n");
   return r;
 }
 
 void irwriter_br(IrWriter* w, const char* label) {
-  int dbg = reserve_dbg(w);
+  int dbg = _reserve_dbg(w);
   fprintf(w->out, "  br label %%%s", label);
-  emit_dbg_suffix(w, dbg);
+  _emit_dbg_suffix(w, dbg);
   fprintf(w->out, "\n");
 }
 
 void irwriter_br_cond(IrWriter* w, const char* cond, const char* if_true, const char* if_false) {
-  int dbg = reserve_dbg(w);
+  int dbg = _reserve_dbg(w);
   fprintf(w->out, "  br i1 %s, label %%%s, label %%%s", cond, if_true, if_false);
-  emit_dbg_suffix(w, dbg);
+  _emit_dbg_suffix(w, dbg);
   fprintf(w->out, "\n");
 }
 
 void irwriter_switch_start(IrWriter* w, const char* ty, const char* val, const char* default_label) {
-  w->switch_dbg_id = reserve_dbg(w);
+  w->switch_dbg_id = _reserve_dbg(w);
   fprintf(w->out, "  switch %s %s, label %%%s [\n", ty, val, default_label);
   w->in_switch = 1;
 }
@@ -224,34 +224,34 @@ void irwriter_switch_case(IrWriter* w, const char* ty, int64_t val, const char* 
 
 void irwriter_switch_end(IrWriter* w) {
   fprintf(w->out, "  ]");
-  emit_dbg_suffix(w, w->switch_dbg_id);
+  _emit_dbg_suffix(w, w->switch_dbg_id);
   fprintf(w->out, "\n");
   w->in_switch = 0;
 }
 
 void irwriter_ret(IrWriter* w, const char* ty, const char* val) {
-  int dbg = reserve_dbg(w);
+  int dbg = _reserve_dbg(w);
   fprintf(w->out, "  ret %s %s", ty, val);
-  emit_dbg_suffix(w, dbg);
+  _emit_dbg_suffix(w, dbg);
   fprintf(w->out, "\n");
 }
 
 const char* irwriter_insertvalue(IrWriter* w, const char* agg_ty, const char* agg_val, const char* elem_ty,
                                  const char* elem_val, int idx) {
-  const char* r = next_reg(w);
-  int dbg = reserve_dbg(w);
+  const char* r = _next_reg(w);
+  int dbg = _reserve_dbg(w);
   fprintf(w->out, "  %s = insertvalue %s %s, %s %s, %d", r, agg_ty, agg_val, elem_ty, elem_val, idx);
-  emit_dbg_suffix(w, dbg);
+  _emit_dbg_suffix(w, dbg);
   fprintf(w->out, "\n");
   return r;
 }
 
 const char* irwriter_insertvalue_imm(IrWriter* w, const char* agg_ty, const char* agg_val, const char* elem_ty,
                                      int64_t elem_val, int idx) {
-  const char* r = next_reg(w);
-  int dbg = reserve_dbg(w);
+  const char* r = _next_reg(w);
+  int dbg = _reserve_dbg(w);
   fprintf(w->out, "  %s = insertvalue %s %s, %s %lld, %d", r, agg_ty, agg_val, elem_ty, (long long)elem_val, idx);
-  emit_dbg_suffix(w, dbg);
+  _emit_dbg_suffix(w, dbg);
   fprintf(w->out, "\n");
   return r;
 }
@@ -271,8 +271,8 @@ void irwriter_declare(IrWriter* w, const char* ret_type, const char* name, const
 }
 
 void irwriter_call_void(IrWriter* w, const char* name) {
-  int dbg = reserve_dbg(w);
+  int dbg = _reserve_dbg(w);
   fprintf(w->out, "  call void @%s()", name);
-  emit_dbg_suffix(w, dbg);
+  _emit_dbg_suffix(w, dbg);
   fprintf(w->out, "\n");
 }

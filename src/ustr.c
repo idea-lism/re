@@ -9,17 +9,17 @@
 //   ^             ^
 //   heap          user pointer
 
-static inline int32_t* ustr__size_ptr(char* s) { return (int32_t*)(s - sizeof(int32_t)); }
+static inline int32_t* _size_ptr(char* s) { return (int32_t*)(s - sizeof(int32_t)); }
 
-static inline const int32_t* ustr__size_ptr_const(const char* s) { return (const int32_t*)(s - sizeof(int32_t)); }
+static inline const int32_t* _size_ptr_const(const char* s) { return (const int32_t*)(s - sizeof(int32_t)); }
 
-static inline uint8_t* ustr__marks_ptr(char* s, int32_t size) { return (uint8_t*)(s + size + 1); }
+static inline uint8_t* _marks_ptr(char* s, int32_t size) { return (uint8_t*)(s + size + 1); }
 
-static inline const uint8_t* ustr__marks_ptr_const(const char* s, int32_t size) {
+static inline const uint8_t* _marks_ptr_const(const char* s, int32_t size) {
   return (const uint8_t*)(s + size + 1);
 }
 
-static inline size_t ustr__alloc_size(int32_t size) {
+static inline size_t _alloc_size(int32_t size) {
   return sizeof(int32_t) + (size_t)size + 1 + ((size_t)size + 7) / 8;
 }
 
@@ -104,18 +104,18 @@ char* ustr_new(size_t sz, const char* data) {
     return NULL;
   }
   int32_t size = (int32_t)sz;
-  size_t alloc = ustr__alloc_size(size);
+  size_t alloc = _alloc_size(size);
   char* heap = (char*)calloc(1, alloc);
   if (!heap) {
     return NULL;
   }
 
   char* s = heap + sizeof(int32_t);
-  *ustr__size_ptr(s) = size;
+  *_size_ptr(s) = size;
   memcpy(s, data, sz);
   s[size] = '\0';
 
-  uint8_t* marks = ustr__marks_ptr(s, size);
+  uint8_t* marks = _marks_ptr(s, size);
   if (ustr_validate((const uint8_t*)data, sz, marks) != 0) {
     free(heap);
     return NULL;
@@ -129,24 +129,24 @@ void ustr_del(char* s) {
   }
 }
 
-int32_t ustr_bytesize(const char* s) { return *ustr__size_ptr_const(s); }
+int32_t ustr_bytesize(const char* s) { return *_size_ptr_const(s); }
 
 // --- Popcount helpers for marks traversal ---
 
-static inline uint64_t marks_read64(const uint8_t* marks, size_t byte_off) {
+static inline uint64_t _marks_read64(const uint8_t* marks, size_t byte_off) {
   uint64_t v;
   memcpy(&v, marks + byte_off, 8);
   return v;
 }
 
 // Count set bits in marks[0 .. bit_count)
-static int32_t marks_popcount(const uint8_t* marks, int32_t bit_count) {
+static int32_t _marks_popcount(const uint8_t* marks, int32_t bit_count) {
   int32_t count = 0;
   int32_t bits = bit_count;
   size_t off = 0;
 
   while (bits >= 64) {
-    count += __builtin_popcountll(marks_read64(marks, off));
+    count += __builtin_popcountll(_marks_read64(marks, off));
     off += 8;
     bits -= 64;
   }
@@ -162,12 +162,12 @@ static int32_t marks_popcount(const uint8_t* marks, int32_t bit_count) {
 
 // Find byte offset of the nth codepoint start (0-indexed).
 // Returns -1 if n >= total codepoints.
-static int32_t marks_nth_cp(const uint8_t* marks, int32_t size, int32_t n) {
+static int32_t _marks_nth_cp(const uint8_t* marks, int32_t size, int32_t n) {
   int32_t remaining = n;
   int32_t byte_pos = 0;
 
   while (byte_pos + 64 <= size) {
-    uint64_t word = marks_read64(marks, (size_t)byte_pos / 8);
+    uint64_t word = _marks_read64(marks, (size_t)byte_pos / 8);
     int pop = __builtin_popcountll(word);
     if (remaining < pop) {
       break;
@@ -199,22 +199,22 @@ static int32_t marks_nth_cp(const uint8_t* marks, int32_t size, int32_t n) {
 
 int32_t ustr_size(const char* s) {
   int32_t size = ustr_bytesize(s);
-  const uint8_t* marks = ustr__marks_ptr_const(s, size);
-  return marks_popcount(marks, size);
+  const uint8_t* marks = _marks_ptr_const(s, size);
+  return _marks_popcount(marks, size);
 }
 
 // --- Iterator ---
 
 void ustr_iter_init(ustr_iter* it, const char* s, int32_t char_offset) {
   int32_t size = ustr_bytesize(s);
-  const uint8_t* marks = ustr__marks_ptr_const(s, size);
+  const uint8_t* marks = _marks_ptr_const(s, size);
   int32_t byte_off;
   if (char_offset == 0) {
     byte_off = 0;
   } else {
-    byte_off = marks_nth_cp(marks, size, char_offset);
+    byte_off = _marks_nth_cp(marks, size, char_offset);
     if (byte_off < 0) {
-      int32_t cplen = marks_popcount(marks, size);
+      int32_t cplen = _marks_popcount(marks, size);
       assert(char_offset == cplen);
       byte_off = size;
     }
@@ -228,7 +228,7 @@ void ustr_iter_init(ustr_iter* it, const char* s, int32_t char_offset) {
   it->cp_idx = char_offset;
 }
 
-static inline int32_t decode_cp(const uint8_t* p, int32_t* adv) {
+static inline int32_t _decode_cp(const uint8_t* p, int32_t* adv) {
   uint8_t b = p[0];
   if (b < 0x80) {
     *adv = 1;
@@ -251,7 +251,7 @@ int32_t ustr_iter_next(ustr_iter* it) {
   }
 
   int32_t adv;
-  int32_t cp = decode_cp((const uint8_t*)it->s + it->byte_off, &adv);
+  int32_t cp = _decode_cp((const uint8_t*)it->s + it->byte_off, &adv);
   it->byte_off += adv;
   it->cp_idx++;
 
@@ -269,7 +269,7 @@ int32_t ustr_iter_next(ustr_iter* it) {
 char* ustr_slice(const char* s, int32_t start, int32_t end) {
   int32_t size = ustr_bytesize(s);
   int32_t cplen = ustr_size(s);
-  const uint8_t* marks = ustr__marks_ptr_const(s, size);
+  const uint8_t* marks = _marks_ptr_const(s, size);
 
   if (start < 0) {
     start += cplen;
@@ -287,8 +287,8 @@ char* ustr_slice(const char* s, int32_t start, int32_t end) {
     return ustr_new(0, "");
   }
 
-  int32_t byte_start = marks_nth_cp(marks, size, start);
-  int32_t byte_end = (end >= cplen) ? size : marks_nth_cp(marks, size, end);
+  int32_t byte_start = _marks_nth_cp(marks, size, start);
+  int32_t byte_end = (end >= cplen) ? size : _marks_nth_cp(marks, size, end);
   if (byte_start < 0) {
     return ustr_new(0, "");
   }

@@ -88,7 +88,7 @@ void aut_del(Aut* a) {
   free(a);
 }
 
-static void track_state(Aut* a, int32_t s) {
+static void _track_state(Aut* a, int32_t s) {
   if (s > a->max_state) {
     a->max_state = s;
   }
@@ -107,8 +107,8 @@ void aut_transition(Aut* a, TransitionDef tdef, DebugInfo di) {
       .line = di.source_file_line,
       .col = di.source_file_col,
   };
-  track_state(a, tdef.from_state_id);
-  track_state(a, tdef.to_state_id);
+  _track_state(a, tdef.from_state_id);
+  _track_state(a, tdef.to_state_id);
 }
 
 void aut_epsilon(Aut* a, int32_t from_state, int32_t to_state, int32_t action_id) {
@@ -117,14 +117,14 @@ void aut_epsilon(Aut* a, int32_t from_state, int32_t to_state, int32_t action_id
     a->eps_trans = realloc(a->eps_trans, (size_t)a->eps_trans_cap * sizeof(EpsTrans));
   }
   a->eps_trans[a->eps_ntrans++] = (EpsTrans){from_state, to_state, action_id};
-  track_state(a, from_state);
-  track_state(a, to_state);
+  _track_state(a, from_state);
+  _track_state(a, to_state);
 }
 
 // --- Epsilon closure ---
 // Returns the closure bitset and writes the smallest non-zero action_id to *out_action (0 if none).
 
-static Bitset* epsilon_closure(Bitset* states, EpsTrans* eps, int neps, int nstates, int32_t* out_action) {
+static Bitset* _epsilon_closure(Bitset* states, EpsTrans* eps, int neps, int nstates, int32_t* out_action) {
   Bitset* result = bitset_or(states, states); // copy
   int32_t min_action = 0;
   int has_action = 0;
@@ -154,7 +154,7 @@ static Bitset* epsilon_closure(Bitset* states, EpsTrans* eps, int neps, int nsta
 
 // --- Bitset equality ---
 
-static int bitset_equal(Bitset* a, Bitset* b, int nstates) {
+static int _bitset_equal(Bitset* a, Bitset* b, int nstates) {
   for (int i = 0; i < nstates; i++) {
     if (bitset_contains(a, (uint32_t)i) != bitset_contains(b, (uint32_t)i)) {
       return 0;
@@ -169,7 +169,7 @@ typedef struct {
   int32_t val;
 } SplitPoint;
 
-static int cmp_int32(const void* a, const void* b) {
+static int _cmp_int32(const void* a, const void* b) {
   int32_t x = *(const int32_t*)a;
   int32_t y = *(const int32_t*)b;
   return (x > y) - (x < y);
@@ -179,7 +179,7 @@ static int cmp_int32(const void* a, const void* b) {
 // Takes NFA transitions, epsilon transitions, initial state set, and nfa state count.
 // Produces DFA states and transitions. Returns them through the Aut struct fields.
 
-static void determinize(Aut* a, Bitset* initial, NfaTrans* nfa, int nnfa, EpsTrans* eps, int neps, int nstates) {
+static void _determinize(Aut* a, Bitset* initial, NfaTrans* nfa, int nnfa, EpsTrans* eps, int neps, int nstates) {
   // Clear existing DFA
   for (int i = 0; i < a->dfa_nstates; i++) {
     bitset_del(a->dfa_states[i].nfa_states);
@@ -188,7 +188,7 @@ static void determinize(Aut* a, Bitset* initial, NfaTrans* nfa, int nnfa, EpsTra
   a->dfa_ntrans = 0;
 
   // DFA state 0 = epsilon closure of initial
-  Bitset* start = epsilon_closure(initial, eps, neps, nstates, NULL);
+  Bitset* start = _epsilon_closure(initial, eps, neps, nstates, NULL);
 
   if (a->dfa_nstates == a->dfa_states_cap) {
     a->dfa_states_cap = a->dfa_states_cap ? a->dfa_states_cap * 2 : 64;
@@ -209,7 +209,7 @@ static void determinize(Aut* a, Bitset* initial, NfaTrans* nfa, int nnfa, EpsTra
     splits[nsplits++] = nfa[i].cp_start;
     splits[nsplits++] = nfa[i].cp_end + 1;
   }
-  qsort(splits, (size_t)nsplits, sizeof(int32_t), cmp_int32);
+  qsort(splits, (size_t)nsplits, sizeof(int32_t), _cmp_int32);
   // Deduplicate
   int dedup = 0;
   for (int i = 0; i < nsplits; i++) {
@@ -263,13 +263,13 @@ static void determinize(Aut* a, Bitset* initial, NfaTrans* nfa, int nnfa, EpsTra
       }
 
       int32_t eps_action = 0;
-      Bitset* closed = epsilon_closure(target, eps, neps, nstates, &eps_action);
+      Bitset* closed = _epsilon_closure(target, eps, neps, nstates, &eps_action);
       bitset_del(target);
 
       // Find or create DFA state for closed
       int found = -1;
       for (int d = 0; d < a->dfa_nstates; d++) {
-        if (bitset_equal(a->dfa_states[d].nfa_states, closed, nstates)) {
+        if (_bitset_equal(a->dfa_states[d].nfa_states, closed, nstates)) {
           found = d;
           break;
         }
@@ -313,7 +313,7 @@ static void determinize(Aut* a, Bitset* initial, NfaTrans* nfa, int nnfa, EpsTra
 // The old start state (0) becomes an accepting concept — but since we don't have accept states,
 // we just reverse all edges and add a super start.
 
-static void reverse_nfa(NfaTrans** out_trans, int* out_ntrans, EpsTrans** out_eps, int* out_neps,
+static void _reverse_nfa(NfaTrans** out_trans, int* out_ntrans, EpsTrans** out_eps, int* out_neps,
                         int32_t* out_max_state, NfaTrans* trans, int ntrans, EpsTrans* eps, int neps,
                         int32_t old_max_state, int32_t old_start) {
   int32_t super_start = old_max_state + 1;
@@ -355,7 +355,7 @@ static void reverse_nfa(NfaTrans** out_trans, int* out_ntrans, EpsTrans** out_ep
 }
 
 // --- Brzozowski minimization ---
-// reverse -> determinize -> reverse -> determinize
+// reverse -> _determinize -> reverse -> _determinize
 
 void aut_optimize(Aut* a) {
   if (a->max_state < 0) {
@@ -365,14 +365,14 @@ void aut_optimize(Aut* a) {
 
   (void)0;
 
-  // --- First pass: reverse -> determinize ---
+  // --- First pass: reverse -> _determinize ---
   NfaTrans* rev1_trans = NULL;
   int rev1_ntrans = 0;
   EpsTrans* rev1_eps = NULL;
   int rev1_neps = 0;
   int32_t rev1_max = 0;
 
-  reverse_nfa(&rev1_trans, &rev1_ntrans, &rev1_eps, &rev1_neps, &rev1_max, a->nfa_trans, a->nfa_ntrans, a->eps_trans,
+  _reverse_nfa(&rev1_trans, &rev1_ntrans, &rev1_eps, &rev1_neps, &rev1_max, a->nfa_trans, a->nfa_ntrans, a->eps_trans,
               a->eps_ntrans, a->max_state, 0);
 
   int rev1_nstates = rev1_max + 1;
@@ -380,7 +380,7 @@ void aut_optimize(Aut* a) {
   // Initial state for determinization = {super_start}
   Bitset* init1 = bitset_new();
   bitset_add_bit(init1, (uint32_t)rev1_max); // super_start
-  determinize(a, init1, rev1_trans, rev1_ntrans, rev1_eps, rev1_neps, rev1_nstates);
+  _determinize(a, init1, rev1_trans, rev1_ntrans, rev1_eps, rev1_neps, rev1_nstates);
   bitset_del(init1);
   free(rev1_trans);
   free(rev1_eps);
@@ -424,14 +424,14 @@ void aut_optimize(Aut* a) {
     }
   }
 
-  // --- Second pass: reverse -> determinize ---
+  // --- Second pass: reverse -> _determinize ---
   NfaTrans* rev2_trans = NULL;
   int rev2_ntrans = 0;
   EpsTrans* rev2_eps = NULL;
   int rev2_neps = 0;
   int32_t rev2_max = 0;
 
-  reverse_nfa(&rev2_trans, &rev2_ntrans, &rev2_eps, &rev2_neps, &rev2_max, nfa2, dfa1_ntrans, eps2, eps2_n,
+  _reverse_nfa(&rev2_trans, &rev2_ntrans, &rev2_eps, &rev2_neps, &rev2_max, nfa2, dfa1_ntrans, eps2, eps2_n,
               next_state - 1, 0);
   free(nfa2);
   free(eps2);
@@ -440,7 +440,7 @@ void aut_optimize(Aut* a) {
 
   Bitset* init2 = bitset_new();
   bitset_add_bit(init2, (uint32_t)rev2_max); // super_start
-  determinize(a, init2, rev2_trans, rev2_ntrans, rev2_eps, rev2_neps, rev2_nstates);
+  _determinize(a, init2, rev2_trans, rev2_ntrans, rev2_eps, rev2_neps, rev2_nstates);
   bitset_del(init2);
   free(rev2_trans);
   free(rev2_eps);
@@ -465,17 +465,17 @@ void aut_optimize(Aut* a) {
 
 // --- Simple determinization for when optimize is not called ---
 
-static void simple_determinize(Aut* a) {
+static void _simple_determinize(Aut* a) {
   int nstates = a->max_state + 1;
   Bitset* init = bitset_new();
   bitset_add_bit(init, 0);
-  determinize(a, init, a->nfa_trans, a->nfa_ntrans, a->eps_trans, a->eps_ntrans, nstates);
+  _determinize(a, init, a->nfa_trans, a->nfa_ntrans, a->eps_trans, a->eps_ntrans, nstates);
   bitset_del(init);
 }
 
 int32_t aut_dfa_nstates(Aut* a) {
   if (!a->optimized) {
-    simple_determinize(a);
+    _simple_determinize(a);
   }
   return a->dfa_nstates;
 }
@@ -484,7 +484,7 @@ int32_t aut_dfa_nstates(Aut* a) {
 
 void aut_gen_dfa(Aut* a, IrWriter* w, bool debug_mode) {
   if (!a->optimized) {
-    simple_determinize(a);
+    _simple_determinize(a);
   }
 
   if (debug_mode) {
