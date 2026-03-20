@@ -17,15 +17,20 @@ Automaton matching is UTF-8 based, it expects inputs codepoint by codepoint (int
   - define epsilon transition
 - `aut_optimize(dfa)`
   - brzozowski
+  - utilize bitset.h / bitset.c
 - `aut_gen_dfa(dfa, IRWriter writer)`
   - Generates function in LLVM IR
   - C calling convention
   - signature: `(int32_t state, int codepoint) -> (int32_t new_state, int32_t action_id)`
+  - char group range matching:
+    - just generate a flat switch case, llvm can optimize this
   - returns the smallest action_id possible
     - 0 for no action
     - -1 for user defined transition invalid
     - -2 for undefined transition invalid
     - note that we don't need special handling for 0 or -1 because we have the `smallest` rule
+  - dead state input:
+    - should not happen, abort() in debug mode (assert(false)), but still return `{last_state, -2}`
 - IR also encodes debug infomation so lldb step-by-step can show the regexp source:
   - utilize dfa's `source_file_name`
   - utilize iterator's `line` and `col`

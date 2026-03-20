@@ -4,6 +4,9 @@ lib "ustr",
 lib "irwriter",
   srcs: %w[src/irwriter.c]
 
+lib "bitset",
+  srcs: %w[src/bitset.c]
+
 exe "test_ustr",
   srcs: %w[test/test_ustr.c src/ustr_naive.c],
   deps: %w[ustr]
@@ -11,6 +14,10 @@ exe "test_ustr",
 exe "test_irwriter",
   srcs: %w[test/test_irwriter.c],
   deps: %w[irwriter]
+
+exe "test_bitset",
+  srcs: %w[test/test_bitset.c],
+  deps: %w[bitset]
 
 exe "bench_ustr",
   srcs: %w[test/bench_ustr.c src/ustr_naive.c],
