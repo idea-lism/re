@@ -6,19 +6,20 @@ The building model is NFA, output is DFA.
 
 - Basic interface: `aut_new(function_name, source_file_name)`, `aut_del()`
 - `aut_transition(dfa, TransitionDef tdef, DebugInfo di)`
-  - arg `tdef`: `{int32_t from_state_id, int32_t to_state_id, int32_t cp_start, int32_t cp_end_inclusive, int32_t action_id}`
+  - arg `tdef`: `{int32_t from_state_id, int32_t to_state_id, int32_t cp_start, int32_t cp_end_inclusive}`
     - init state: 0
     - special cp: `-1` for beginning of string, `-2` for end of string
-    - action_id:
-      - multiple transitions can result in same action_id
-      - 0: no trigger action
-      - -1: when this happens, return invalid match, useful for defining word boundaries
-      - note that we don't need special handling for 0 or -1
   - arg `di`: `{int32_t source_file_line, int32_t source_file_col}`
-- `aut_epsilon(dfa, from_state, to_state)`
+- `aut_epsilon(dfa, from_state, to_state, action_id)`
   - define epsilon transition
+  - makes it emit action `action_id` after transition:
+    - different transitions can result in same action_id
+    - 0: in generated code: no trigger action
+    - -1: in generated code: when this happens, return invalid match, useful for defining word boundaries
+    - note that we don't need special handling for 0 or -1
 - `aut_optimize(dfa)`
   - brzozowski
+    - test should verify states are reduced
   - utilize bitset.h / bitset.c
 - `aut_gen_dfa(dfa, IRWriter writer, debug_mode)`
   - Generates function in LLVM IR

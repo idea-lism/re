@@ -13,7 +13,6 @@ typedef struct {
   int32_t to;
   int32_t cp_start;
   int32_t cp_end;
-  int32_t action_id;
   int32_t line;
   int32_t col;
 } NfaTrans;
@@ -21,6 +20,7 @@ typedef struct {
 typedef struct {
   int32_t from;
   int32_t to;
+  int32_t action_id;
 } EpsTrans;
 
 // --- DFA state (after determinization) ---
@@ -104,7 +104,6 @@ void aut_transition(Aut* a, TransitionDef tdef, DebugInfo di) {
       .to = tdef.to_state_id,
       .cp_start = tdef.cp_start,
       .cp_end = tdef.cp_end_inclusive,
-      .action_id = tdef.action_id,
       .line = di.source_file_line,
       .col = di.source_file_col,
   };
@@ -112,20 +111,23 @@ void aut_transition(Aut* a, TransitionDef tdef, DebugInfo di) {
   track_state(a, tdef.to_state_id);
 }
 
-void aut_epsilon(Aut* a, int32_t from_state, int32_t to_state) {
+void aut_epsilon(Aut* a, int32_t from_state, int32_t to_state, int32_t action_id) {
   if (a->eps_ntrans == a->eps_trans_cap) {
     a->eps_trans_cap = a->eps_trans_cap ? a->eps_trans_cap * 2 : 64;
     a->eps_trans = realloc(a->eps_trans, (size_t)a->eps_trans_cap * sizeof(EpsTrans));
   }
-  a->eps_trans[a->eps_ntrans++] = (EpsTrans){from_state, to_state};
+  a->eps_trans[a->eps_ntrans++] = (EpsTrans){from_state, to_state, action_id};
   track_state(a, from_state);
   track_state(a, to_state);
 }
 
 // --- Epsilon closure ---
+// Returns the closure bitset and writes the smallest non-zero action_id to *out_action (0 if none).
 
-static Bitset* epsilon_closure(Bitset* states, EpsTrans* eps, int neps, int nstates) {
+static Bitset* epsilon_closure(Bitset* states, EpsTrans* eps, int neps, int nstates, int32_t* out_action) {
   Bitset* result = bitset_or(states, states); // copy
+  int32_t min_action = 0;
+  int has_action = 0;
   int changed = 1;
   while (changed) {
     changed = 0;
@@ -134,9 +136,18 @@ static Bitset* epsilon_closure(Bitset* states, EpsTrans* eps, int neps, int nsta
       uint32_t to = (uint32_t)eps[i].to;
       if (from < (uint32_t)nstates && bitset_contains(result, from) && !bitset_contains(result, to)) {
         bitset_add_bit(result, to);
+        if (eps[i].action_id != 0) {
+          if (!has_action || eps[i].action_id < min_action) {
+            min_action = eps[i].action_id;
+          }
+          has_action = 1;
+        }
         changed = 1;
       }
     }
+  }
+  if (out_action) {
+    *out_action = min_action;
   }
   return result;
 }
@@ -177,7 +188,7 @@ static void determinize(Aut* a, Bitset* initial, NfaTrans* nfa, int nnfa, EpsTra
   a->dfa_ntrans = 0;
 
   // DFA state 0 = epsilon closure of initial
-  Bitset* start = epsilon_closure(initial, eps, neps, nstates);
+  Bitset* start = epsilon_closure(initial, eps, neps, nstates, NULL);
 
   if (a->dfa_nstates == a->dfa_states_cap) {
     a->dfa_states_cap = a->dfa_states_cap ? a->dfa_states_cap * 2 : 64;
@@ -229,25 +240,18 @@ static void determinize(Aut* a, Bitset* initial, NfaTrans* nfa, int nnfa, EpsTra
 
       // Find all NFA transitions that fire on any codepoint in [lo, hi]
       Bitset* target = bitset_new();
-      int32_t min_action = 0;
-      int has_action = 0;
       int32_t best_line = 0, best_col = 0;
+      int has_line = 0;
 
       for (int t = 0; t < nnfa; t++) {
         if (nfa[t].cp_start <= lo && nfa[t].cp_end >= hi) {
           uint32_t from = (uint32_t)nfa[t].from;
           if (from < (uint32_t)nstates && bitset_contains(cur_set, from)) {
             bitset_add_bit(target, (uint32_t)nfa[t].to);
-            if (nfa[t].action_id != 0) {
-              if (!has_action || nfa[t].action_id < min_action) {
-                min_action = nfa[t].action_id;
-                best_line = nfa[t].line;
-                best_col = nfa[t].col;
-              }
-              has_action = 1;
-            } else if (!has_action) {
+            if (!has_line) {
               best_line = nfa[t].line;
               best_col = nfa[t].col;
+              has_line = 1;
             }
           }
         }
@@ -258,7 +262,8 @@ static void determinize(Aut* a, Bitset* initial, NfaTrans* nfa, int nnfa, EpsTra
         continue;
       }
 
-      Bitset* closed = epsilon_closure(target, eps, neps, nstates);
+      int32_t eps_action = 0;
+      Bitset* closed = epsilon_closure(target, eps, neps, nstates, &eps_action);
       bitset_del(target);
 
       // Find or create DFA state for closed
@@ -290,7 +295,7 @@ static void determinize(Aut* a, Bitset* initial, NfaTrans* nfa, int nnfa, EpsTra
           .to = found,
           .cp_start = lo,
           .cp_end = hi,
-          .action_id = min_action,
+          .action_id = eps_action,
           .line = best_line,
           .col = best_col,
       };
@@ -323,32 +328,14 @@ static void reverse_nfa(NfaTrans** out_trans, int* out_ntrans, EpsTrans** out_ep
         .to = trans[i].from,
         .cp_start = trans[i].cp_start,
         .cp_end = trans[i].cp_end,
-        .action_id = trans[i].action_id,
         .line = trans[i].line,
         .col = trans[i].col,
     };
   }
 
   // Reversed epsilon transitions + super start -> all states that were accepting
-  // "Accepting" in our context: states that have at least one outgoing transition with action_id != 0
-  // Plus the old start gets an epsilon from super_start
-  // Actually in standard Brzozowski: the reversed NFA has as initial states the old final states,
-  // and as final state the old initial state.
-  // Since we don't have explicit final states, we consider all states as potential endpoints
-  // and just reverse. The super start connects to all states that had *incoming* transitions
-  // to the old start? No — for Brzozowski, we need:
-  //   reversed_initial = old_final_states
-  //   reversed_final = {old_initial_state}
-  //
-  // For us, we don't have explicit final states — actions are on transitions.
-  // The approach: treat every state that is a "to" state of a transition with action_id != 0
-  // as a final state. Plus if there are no action transitions, we still need all reachable states.
-  //
-  // Simpler approach: in our DFA, every state is potentially interesting. For the reversed NFA,
-  // the super start has epsilon transitions to ALL states (except old_start).
-  // This is conservative but correct — determinization will prune unreachable states.
-  //
-  // Even simpler: epsilon from super_start to every state except old_start.
+  // Actions are on epsilon transitions. Reverse them (swap from/to, keep action_id).
+  // Super start connects to all states except old_start with action_id=0.
 
   int max_eps = neps + (int)(old_max_state + 1);
   *out_eps = malloc((size_t)max_eps * sizeof(EpsTrans));
@@ -356,13 +343,13 @@ static void reverse_nfa(NfaTrans** out_trans, int* out_ntrans, EpsTrans** out_ep
 
   // Reversed epsilon transitions
   for (int i = 0; i < neps; i++) {
-    (*out_eps)[(*out_neps)++] = (EpsTrans){eps[i].to, eps[i].from};
+    (*out_eps)[(*out_neps)++] = (EpsTrans){eps[i].to, eps[i].from, eps[i].action_id};
   }
 
   // Super start -> all states except old_start
   for (int32_t s = 0; s <= old_max_state; s++) {
     if (s != old_start) {
-      (*out_eps)[(*out_neps)++] = (EpsTrans){super_start, s};
+      (*out_eps)[(*out_neps)++] = (EpsTrans){super_start, s, 0};
     }
   }
 }
@@ -400,19 +387,41 @@ void aut_optimize(Aut* a) {
 
   // Now a has DFA states and transitions from first determinization.
   // Convert DFA back to NFA format for second reverse.
+  // DFA transitions with action_id become: char transition to intermediate state + epsilon with action.
   int dfa1_nstates = a->dfa_nstates;
   int dfa1_ntrans = a->dfa_ntrans;
   NfaTrans* nfa2 = malloc((size_t)dfa1_ntrans * sizeof(NfaTrans));
+  EpsTrans* eps2 = NULL;
+  int eps2_n = 0;
+  int eps2_cap = 0;
+  int32_t next_state = (int32_t)dfa1_nstates;
+
   for (int i = 0; i < dfa1_ntrans; i++) {
-    nfa2[i] = (NfaTrans){
-        .from = a->dfa_trans[i].from,
-        .to = a->dfa_trans[i].to,
-        .cp_start = a->dfa_trans[i].cp_start,
-        .cp_end = a->dfa_trans[i].cp_end,
-        .action_id = a->dfa_trans[i].action_id,
-        .line = a->dfa_trans[i].line,
-        .col = a->dfa_trans[i].col,
-    };
+    if (a->dfa_trans[i].action_id != 0) {
+      int32_t mid = next_state++;
+      nfa2[i] = (NfaTrans){
+          .from = a->dfa_trans[i].from,
+          .to = mid,
+          .cp_start = a->dfa_trans[i].cp_start,
+          .cp_end = a->dfa_trans[i].cp_end,
+          .line = a->dfa_trans[i].line,
+          .col = a->dfa_trans[i].col,
+      };
+      if (eps2_n == eps2_cap) {
+        eps2_cap = eps2_cap ? eps2_cap * 2 : 64;
+        eps2 = realloc(eps2, (size_t)eps2_cap * sizeof(EpsTrans));
+      }
+      eps2[eps2_n++] = (EpsTrans){mid, a->dfa_trans[i].to, a->dfa_trans[i].action_id};
+    } else {
+      nfa2[i] = (NfaTrans){
+          .from = a->dfa_trans[i].from,
+          .to = a->dfa_trans[i].to,
+          .cp_start = a->dfa_trans[i].cp_start,
+          .cp_end = a->dfa_trans[i].cp_end,
+          .line = a->dfa_trans[i].line,
+          .col = a->dfa_trans[i].col,
+      };
+    }
   }
 
   // --- Second pass: reverse -> determinize ---
@@ -422,9 +431,10 @@ void aut_optimize(Aut* a) {
   int rev2_neps = 0;
   int32_t rev2_max = 0;
 
-  reverse_nfa(&rev2_trans, &rev2_ntrans, &rev2_eps, &rev2_neps, &rev2_max, nfa2, dfa1_ntrans, NULL, 0,
-              (int32_t)(dfa1_nstates - 1), 0);
+  reverse_nfa(&rev2_trans, &rev2_ntrans, &rev2_eps, &rev2_neps, &rev2_max, nfa2, dfa1_ntrans, eps2, eps2_n,
+              next_state - 1, 0);
   free(nfa2);
+  free(eps2);
 
   int rev2_nstates = rev2_max + 1;
 
@@ -461,6 +471,13 @@ static void simple_determinize(Aut* a) {
   bitset_add_bit(init, 0);
   determinize(a, init, a->nfa_trans, a->nfa_ntrans, a->eps_trans, a->eps_ntrans, nstates);
   bitset_del(init);
+}
+
+int32_t aut_dfa_nstates(Aut* a) {
+  if (!a->optimized) {
+    simple_determinize(a);
+  }
+  return a->dfa_nstates;
 }
 
 // --- IR generation ---

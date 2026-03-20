@@ -35,7 +35,8 @@ static char* gen_ir(void (*fn)(Aut*, IrWriter*)) {
 // --- Basic: single transition ---
 
 static void build_single(Aut* a, IrWriter* w) {
-  aut_transition(a, (TransitionDef){0, 1, 'A', 'A', 1}, (DebugInfo){1, 1});
+  aut_transition(a, (TransitionDef){0, 1, 'A', 'A'}, (DebugInfo){1, 1});
+  aut_epsilon(a, 1, 2, 1);
   aut_gen_dfa(a, w, false);
 }
 
@@ -53,7 +54,8 @@ TEST(test_single_transition) {
 // --- Range transition ---
 
 static void build_range(Aut* a, IrWriter* w) {
-  aut_transition(a, (TransitionDef){0, 1, 'A', 'Z', 1}, (DebugInfo){1, 1});
+  aut_transition(a, (TransitionDef){0, 1, 'A', 'Z'}, (DebugInfo){1, 1});
+  aut_epsilon(a, 1, 2, 1);
   aut_gen_dfa(a, w, false);
 }
 
@@ -68,8 +70,10 @@ TEST(test_range_transition) {
 // --- Multiple transitions from one state ---
 
 static void build_multi(Aut* a, IrWriter* w) {
-  aut_transition(a, (TransitionDef){0, 1, 'A', 'Z', 1}, (DebugInfo){1, 1});
-  aut_transition(a, (TransitionDef){0, 2, 'a', 'z', 2}, (DebugInfo){2, 1});
+  aut_transition(a, (TransitionDef){0, 1, 'A', 'Z'}, (DebugInfo){1, 1});
+  aut_epsilon(a, 1, 3, 1);
+  aut_transition(a, (TransitionDef){0, 2, 'a', 'z'}, (DebugInfo){2, 1});
+  aut_epsilon(a, 2, 4, 2);
   aut_gen_dfa(a, w, false);
 }
 
@@ -87,8 +91,9 @@ TEST(test_multi_transitions) {
 
 static void build_epsilon(Aut* a, IrWriter* w) {
   // State 0 --eps--> state 1, state 1 --'x'--> state 2 with action 1
-  aut_epsilon(a, 0, 1);
-  aut_transition(a, (TransitionDef){1, 2, 'x', 'x', 1}, (DebugInfo){1, 1});
+  aut_epsilon(a, 0, 1, 0);
+  aut_transition(a, (TransitionDef){1, 2, 'x', 'x'}, (DebugInfo){1, 1});
+  aut_epsilon(a, 2, 3, 1);
   aut_gen_dfa(a, w, false);
 }
 
@@ -103,9 +108,11 @@ TEST(test_epsilon) {
 // --- Special codepoints ---
 
 static void build_special_cp(Aut* a, IrWriter* w) {
-  aut_transition(a, (TransitionDef){0, 1, -1, -1, 0}, (DebugInfo){1, 1}); // BOF
-  aut_transition(a, (TransitionDef){1, 2, 'a', 'z', 1}, (DebugInfo){1, 5});
-  aut_transition(a, (TransitionDef){2, 3, -2, -2, 2}, (DebugInfo){1, 10}); // EOF
+  aut_transition(a, (TransitionDef){0, 1, -1, -1}, (DebugInfo){1, 1}); // BOF
+  aut_transition(a, (TransitionDef){1, 2, 'a', 'z'}, (DebugInfo){1, 5});
+  aut_epsilon(a, 2, 3, 1);
+  aut_transition(a, (TransitionDef){3, 4, -2, -2}, (DebugInfo){1, 10}); // EOF
+  aut_epsilon(a, 4, 5, 2);
   aut_gen_dfa(a, w, false);
 }
 
@@ -131,8 +138,10 @@ TEST(test_dead_state) {
 static void build_action_smallest(Aut* a, IrWriter* w) {
   // Two transitions from state 0 on overlapping range, different actions
   // action 5 on [A-Z], action 3 on [M-M]
-  aut_transition(a, (TransitionDef){0, 1, 'A', 'Z', 5}, (DebugInfo){1, 1});
-  aut_transition(a, (TransitionDef){0, 1, 'M', 'M', 3}, (DebugInfo){1, 5});
+  aut_transition(a, (TransitionDef){0, 1, 'A', 'Z'}, (DebugInfo){1, 1});
+  aut_epsilon(a, 1, 3, 5);
+  aut_transition(a, (TransitionDef){0, 2, 'M', 'M'}, (DebugInfo){1, 5});
+  aut_epsilon(a, 2, 4, 3);
   aut_gen_dfa(a, w, false);
 }
 
@@ -148,7 +157,8 @@ TEST(test_action_smallest) {
 // --- Debug info ---
 
 static void build_debug(Aut* a, IrWriter* w) {
-  aut_transition(a, (TransitionDef){0, 1, 'A', 'A', 1}, (DebugInfo){10, 5});
+  aut_transition(a, (TransitionDef){0, 1, 'A', 'A'}, (DebugInfo){10, 5});
+  aut_epsilon(a, 1, 2, 1);
   aut_gen_dfa(a, w, false);
 }
 
@@ -162,7 +172,8 @@ TEST(test_debug_info) {
 // --- Debug trap on dead state ---
 
 static void build_debug_trap(Aut* a, IrWriter* w) {
-  aut_transition(a, (TransitionDef){0, 1, 'A', 'A', 1}, (DebugInfo){1, 1});
+  aut_transition(a, (TransitionDef){0, 1, 'A', 'A'}, (DebugInfo){1, 1});
+  aut_epsilon(a, 1, 2, 1);
   aut_gen_dfa(a, w, true);
 }
 
@@ -179,10 +190,12 @@ static void build_redundant(Aut* a, IrWriter* w) {
   // Create redundant NFA: states 0,1,2 where 1 and 2 behave identically
   // 0 --'a'--> 1, 0 --'b'--> 2
   // 1 --'c'--> 3 (action 1), 2 --'c'--> 3 (action 1)
-  aut_transition(a, (TransitionDef){0, 1, 'a', 'a', 0}, (DebugInfo){1, 1});
-  aut_transition(a, (TransitionDef){0, 2, 'b', 'b', 0}, (DebugInfo){1, 5});
-  aut_transition(a, (TransitionDef){1, 3, 'c', 'c', 1}, (DebugInfo){2, 1});
-  aut_transition(a, (TransitionDef){2, 3, 'c', 'c', 1}, (DebugInfo){2, 5});
+  aut_transition(a, (TransitionDef){0, 1, 'a', 'a'}, (DebugInfo){1, 1});
+  aut_transition(a, (TransitionDef){0, 2, 'b', 'b'}, (DebugInfo){1, 5});
+  aut_transition(a, (TransitionDef){1, 3, 'c', 'c'}, (DebugInfo){2, 1});
+  aut_epsilon(a, 3, 5, 1);
+  aut_transition(a, (TransitionDef){2, 4, 'c', 'c'}, (DebugInfo){2, 5});
+  aut_epsilon(a, 4, 6, 1);
   aut_optimize(a);
   aut_gen_dfa(a, w, false);
 }
@@ -194,6 +207,33 @@ TEST(test_optimize) {
   assert(strstr(out, "define {i32, i32} @match"));
   assert(strstr(out, "switch i32 %state, label %dead"));
   free(out);
+}
+
+TEST(test_optimize_reduces_states) {
+  // Build redundant NFA without optimization, count DFA states.
+  Aut* a1 = aut_new("m", "test.rules");
+  aut_transition(a1, (TransitionDef){0, 1, 'a', 'a'}, (DebugInfo){1, 1});
+  aut_transition(a1, (TransitionDef){0, 2, 'b', 'b'}, (DebugInfo){1, 5});
+  aut_transition(a1, (TransitionDef){1, 3, 'c', 'c'}, (DebugInfo){2, 1});
+  aut_epsilon(a1, 3, 5, 1);
+  aut_transition(a1, (TransitionDef){2, 4, 'c', 'c'}, (DebugInfo){2, 5});
+  aut_epsilon(a1, 4, 6, 1);
+  int32_t unoptimized = aut_dfa_nstates(a1);
+  aut_del(a1);
+
+  // Build identical NFA with optimization, count DFA states.
+  Aut* a2 = aut_new("m", "test.rules");
+  aut_transition(a2, (TransitionDef){0, 1, 'a', 'a'}, (DebugInfo){1, 1});
+  aut_transition(a2, (TransitionDef){0, 2, 'b', 'b'}, (DebugInfo){1, 5});
+  aut_transition(a2, (TransitionDef){1, 3, 'c', 'c'}, (DebugInfo){2, 1});
+  aut_epsilon(a2, 3, 5, 1);
+  aut_transition(a2, (TransitionDef){2, 4, 'c', 'c'}, (DebugInfo){2, 5});
+  aut_epsilon(a2, 4, 6, 1);
+  aut_optimize(a2);
+  int32_t optimized = aut_dfa_nstates(a2);
+  aut_del(a2);
+
+  assert(optimized < unoptimized);
 }
 
 // --- Clang compilation ---
@@ -298,6 +338,7 @@ int main(void) {
   RUN(test_action_smallest);
   RUN(test_debug_info);
   RUN(test_optimize);
+  RUN(test_optimize_reduces_states);
   RUN(test_compile_single);
   RUN(test_compile_range);
   RUN(test_compile_multi);
