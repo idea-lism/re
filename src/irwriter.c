@@ -25,11 +25,15 @@ struct irwriter {
   int dbg_file_id;
   int dbg_flags_emitted;
   int switch_dbg_id;
+  const char* target_triple;
+  const char* source_file;
+  const char* directory;
 };
 
-irwriter* irwriter_new(FILE* out) {
+irwriter* irwriter_new(FILE* out, const char* target_triple) {
   irwriter* w = calloc(1, sizeof(irwriter));
   w->out = out;
+  w->target_triple = target_triple;
   w->dbg_line = -1;
   return w;
 }
@@ -39,9 +43,11 @@ void irwriter_del(irwriter* w) {
   free(w);
 }
 
-void irwriter_start(irwriter* w, const char* source_filename, const char* target_triple) {
-  fprintf(w->out, "source_filename = \"%s\"\n", source_filename);
-  fprintf(w->out, "target triple = \"%s\"\n\n", target_triple);
+void irwriter_start(irwriter* w, const char* source_file, const char* directory) {
+  w->source_file = source_file;
+  w->directory = directory;
+  fprintf(w->out, "source_filename = \"%s\"\n", source_file);
+  fprintf(w->out, "target triple = \"%s\"\n\n", w->target_triple);
 }
 
 void irwriter_end(irwriter* w) {
@@ -101,7 +107,7 @@ void irwriter_define_start(irwriter* w, const char* name, const char* ret_type, 
     fprintf(w->out, "!llvm.dbg.cu = !{!3}\n\n");
     fprintf(w->out, "!0 = !{i32 7, !\"Dwarf Version\", i32 5}\n");
     fprintf(w->out, "!1 = !{i32 2, !\"Debug Info Version\", i32 3}\n");
-    fprintf(w->out, "!2 = !DIFile(filename: \"unknown\", directory: \".\")\n");
+    fprintf(w->out, "!2 = !DIFile(filename: \"%s\", directory: \"%s\")\n", w->source_file, w->directory);
     fprintf(w->out, "!3 = distinct !DICompileUnit(language: DW_LANG_C11, file: !2,"
                     " producer: \"dfa_gen\", isOptimized: true, runtimeVersion: 0,"
                     " emissionKind: FullDebug)\n");

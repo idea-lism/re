@@ -12,13 +12,15 @@
     printf("ok\n");                                                                                                    \
   } while (0)
 
+#define TARGET "arm64-apple-macosx14.0.0"
+
 // Helper: capture irwriter output into a malloc'd string
 static char* capture(void (*fn)(irwriter*)) {
   char* buf = NULL;
   size_t sz = 0;
   FILE* f = open_memstream(&buf, &sz);
   assert(f);
-  irwriter* w = irwriter_new(f);
+  irwriter* w = irwriter_new(f, TARGET);
   fn(w);
   irwriter_del(w);
   fclose(f);
@@ -27,7 +29,7 @@ static char* capture(void (*fn)(irwriter*)) {
 
 // --- Tests ---
 
-static void emit_module_prelude(irwriter* w) { irwriter_start(w, "test.ll", "arm64-apple-macosx14.0.0"); }
+static void emit_module_prelude(irwriter* w) { irwriter_start(w, "test.ll", "."); }
 
 TEST(test_module_prelude) {
   char* out = capture(emit_module_prelude);
@@ -37,7 +39,7 @@ TEST(test_module_prelude) {
 }
 
 static void emit_simple_function(irwriter* w) {
-  irwriter_start(w, "test.ll", "arm64-apple-macosx14.0.0");
+  irwriter_start(w, "test.ll", ".");
 
   const char* arg_types[] = {"i32", "i32"};
   const char* arg_names[] = {"state", "cp"};
@@ -60,7 +62,7 @@ TEST(test_simple_function) {
 }
 
 static void emit_binop(irwriter* w) {
-  irwriter_start(w, "test.ll", "arm64-apple-macosx14.0.0");
+  irwriter_start(w, "test.ll", ".");
   const char* arg_types[] = {"i32"};
   const char* arg_names[] = {"x"};
   irwriter_define_start(w, "f", "i32", 1, arg_types, arg_names);
@@ -87,7 +89,7 @@ TEST(test_binop) {
 }
 
 static void emit_icmp_branch(irwriter* w) {
-  irwriter_start(w, "test.ll", "arm64-apple-macosx14.0.0");
+  irwriter_start(w, "test.ll", ".");
   const char* arg_types[] = {"i32"};
   const char* arg_names[] = {"x"};
   irwriter_define_start(w, "f", "i32", 1, arg_types, arg_names);
@@ -121,7 +123,7 @@ TEST(test_icmp_branch) {
 }
 
 static void emit_switch(irwriter* w) {
-  irwriter_start(w, "test.ll", "arm64-apple-macosx14.0.0");
+  irwriter_start(w, "test.ll", ".");
   const char* arg_types[] = {"i32"};
   const char* arg_names[] = {"s"};
   irwriter_define_start(w, "dispatch", "void", 1, arg_types, arg_names);
@@ -158,7 +160,7 @@ TEST(test_switch) {
 }
 
 static void emit_insertvalue(irwriter* w) {
-  irwriter_start(w, "test.ll", "arm64-apple-macosx14.0.0");
+  irwriter_start(w, "test.ll", ".");
   const char* arg_types[] = {"i32", "i32"};
   const char* arg_names[] = {"state", "cp"};
   irwriter_define_start(w, "match", "{i32, i32}", 2, arg_types, arg_names);
@@ -185,7 +187,7 @@ TEST(test_insertvalue) {
 }
 
 static void emit_debug_locations(irwriter* w) {
-  irwriter_start(w, "test.ll", "arm64-apple-macosx14.0.0");
+  irwriter_start(w, "test.ll", ".");
   const char* arg_types[] = {"i32"};
   const char* arg_names[] = {"x"};
   irwriter_define_start(w, "f", "i32", 1, arg_types, arg_names);
@@ -211,12 +213,13 @@ TEST(test_debug_locations) {
   assert(strstr(out, "DICompileUnit"));
   assert(strstr(out, "DISubprogram"));
   assert(strstr(out, "!llvm.dbg.cu"));
+  assert(strstr(out, "DIFile(filename: \"test.ll\", directory: \".\")"));
   free(out);
 }
 
 // Full DFA-style function: mimics what aut_gen_dfa would produce
 static void emit_dfa_function(irwriter* w) {
-  irwriter_start(w, "dfa.rules", "arm64-apple-macosx14.0.0");
+  irwriter_start(w, "dfa.rules", ".");
 
   const char* arg_types[] = {"i32", "i32"};
   const char* arg_names[] = {"state", "cp"};
@@ -300,10 +303,10 @@ TEST(test_dfa_function) {
 TEST(test_lifecycle) {
   FILE* f = fopen("/dev/null", "w");
   assert(f);
-  irwriter* w = irwriter_new(f);
+  irwriter* w = irwriter_new(f, TARGET);
   assert(w);
 
-  irwriter_start(w, "test.ll", "arm64-apple-macosx14.0.0");
+  irwriter_start(w, "test.ll", ".");
   const char* arg_types[] = {"i32"};
   const char* arg_names[] = {"x"};
   irwriter_define_start(w, "f", "i32", 1, arg_types, arg_names);
@@ -321,9 +324,9 @@ TEST(test_clang_compile) {
   const char* obj_path = "/tmp/test_irwriter.o";
   FILE* f = fopen(ll_path, "w");
   assert(f);
-  irwriter* w = irwriter_new(f);
+  irwriter* w = irwriter_new(f, TARGET);
 
-  irwriter_start(w, "dfa.rules", "arm64-apple-macosx14.0.0");
+  irwriter_start(w, "dfa.rules", ".");
 
   const char* arg_types[] = {"i32", "i32"};
   const char* arg_names[] = {"state", "cp"};

@@ -6,11 +6,11 @@
 typedef struct irwriter irwriter;
 
 // Lifecycle
-irwriter* irwriter_new(FILE* out);
+irwriter* irwriter_new(FILE* out, const char* target_triple);
 void irwriter_del(irwriter* w);
 
 // Module prelude/epilogue
-void irwriter_start(irwriter* w, const char* source_filename, const char* target_triple);
+void irwriter_start(irwriter* w, const char* source_file, const char* directory);
 void irwriter_end(irwriter* w);
 
 // Function define

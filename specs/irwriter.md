@@ -9,8 +9,10 @@ We are targeting DFA generating, so there is no loop, so no need complex Dominan
 
 API
 
-- basic: `irwriter_new(FILE*)`, `irwriter_del()`
+- basic: `irwriter_new(FILE*, char* target_tripple)`, `irwriter_del()`
 - module prelude and epilogure `irwriter_start()`, `irwriter_end()`
 - function prelude and epilogure `irwriter_define_start()`, `irwriter_define_end()`
+  - also with file_path, compiling cwd
 - starting a basic block
 - binop, binop_imm, etc
+- emits debug information
