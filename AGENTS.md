@@ -1,3 +1,18 @@
+Develop
+
+```
+ruby config.rb debug
+ninja
+```
+
+Run tests / benchmarks
+
+```
+script/test # in release mode
+script/test debug
+script/benchmark
+```
+
 Clang-format:
 
 - line width: `120`

@@ -462,6 +462,6 @@ int main(void) {
 
   RUN(test_scalar_neon_consistency);
 
-  printf("all tests passed\n");
+  printf("all ok\n");
   return 0;
 }

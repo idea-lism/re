@@ -165,10 +165,6 @@ static int _bitset_equal(Bitset* a, Bitset* b, int nstates) {
 
 // --- Interval splitting for subset construction ---
 
-typedef struct {
-  int32_t val;
-} SplitPoint;
-
 static int _cmp_int32(const void* a, const void* b) {
   int32_t x = *(const int32_t*)a;
   int32_t y = *(const int32_t*)b;
@@ -363,7 +359,6 @@ void aut_optimize(Aut* a) {
     return;
   }
 
-  (void)0;
 
   // --- First pass: reverse -> _determinize ---
   NfaTrans* rev1_trans = NULL;

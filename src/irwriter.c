@@ -61,8 +61,7 @@ void irwriter_end(IrWriter* w) {
   if (!w->dbg_flags_emitted) {
     return;
   }
-  // Module flags and dbg.cu already emitted at first define_start
-  (void)w;
+
 }
 
 static const char* _next_reg(IrWriter* w) {

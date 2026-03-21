@@ -1,0 +1,12 @@
+#!/bin/sh
+set -e
+
+mode="${1:-release}"
+ruby config.rb "$mode"
+ninja
+
+for t in build/"$mode"/bench_*; do
+  [ -x "$t" ] || continue
+  echo "--- $t ---"
+  "$t"
+done

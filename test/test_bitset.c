@@ -241,6 +241,6 @@ int main(void) {
 
   RUN(test_size_popcount);
 
-  printf("all tests passed\n");
+  printf("all ok\n");
   return 0;
 }

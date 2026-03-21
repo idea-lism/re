@@ -137,8 +137,7 @@ Re* re_new(Aut* aut) {
   Re* re = calloc(1, sizeof(Re));
   re->aut = aut;
   re->next_state = 0;
-  int32_t s0 = _alloc_state(re);
-  (void)s0;
+  _alloc_state(re);
   _push_frame(re, 0, 0);
   return re;
 }
