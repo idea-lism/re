@@ -10,68 +10,62 @@ typedef struct {
 } PendingLoc;
 
 struct IrWriter {
-  FILE* out;
+  FILE *out;
   int reg;
-  int buf_idx;
-  char buf[2][32];
   int32_t dbg_line;
   int32_t dbg_col;
   int dbg_next_id;
   int dbg_sub_id;
   int in_switch;
-  PendingLoc* locs;
+  PendingLoc *locs;
   int nlocs;
   int locs_cap;
   int dbg_file_id;
   int dbg_flags_emitted;
   int switch_dbg_id;
-  const char* target_triple;
-  const char* source_file;
-  const char* directory;
-  const char** decls;
+  const char *target_triple;
+  const char *source_file;
+  const char *directory;
+  const char **decls;
   int ndecls;
   int decls_cap;
 };
 
-IrWriter* irwriter_new(FILE* out, const char* target_triple) {
-  IrWriter* w = calloc(1, sizeof(IrWriter));
+IrWriter *irwriter_new(FILE *out, const char *target_triple) {
+  IrWriter *w = calloc(1, sizeof(IrWriter));
   w->out = out;
   w->target_triple = target_triple;
   w->dbg_line = -1;
   return w;
 }
 
-void irwriter_del(IrWriter* w) {
+void irwriter_del(IrWriter *w) {
   for (int i = 0; i < w->ndecls; i++) {
-    free((void*)w->decls[i]);
+    free((void *)w->decls[i]);
   }
   free(w->decls);
   free(w->locs);
   free(w);
 }
 
-void irwriter_start(IrWriter* w, const char* source_file, const char* directory) {
+void irwriter_start(IrWriter *w, const char *source_file, const char *directory) {
   w->source_file = source_file;
   w->directory = directory;
   fprintf(w->out, "source_filename = \"%s\"\n", source_file);
   fprintf(w->out, "target triple = \"%s\"\n\n", w->target_triple);
 }
 
-void irwriter_end(IrWriter* w) {
+void irwriter_end(IrWriter *w) {
   if (!w->dbg_flags_emitted) {
     return;
   }
-
 }
 
-static const char* _next_reg(IrWriter* w) {
-  int idx = w->buf_idx;
-  w->buf_idx = 1 - idx;
-  snprintf(w->buf[idx], sizeof(w->buf[idx]), "%%r%d", w->reg++);
-  return w->buf[idx];
+static int32_t _next_reg(IrWriter *w, char *buf, int32_t buf_size) {
+  return snprintf(buf, (size_t)buf_size, "%%r%d", w->reg++);
 }
 
-static void _push_loc(IrWriter* w, int id, int32_t line, int32_t col, int scope_id) {
+static void _push_loc(IrWriter *w, int id, int32_t line, int32_t col, int scope_id) {
   if (w->nlocs == w->locs_cap) {
     w->locs_cap = w->locs_cap ? w->locs_cap * 2 : 64;
     w->locs = realloc(w->locs, (size_t)w->locs_cap * sizeof(PendingLoc));
@@ -80,7 +74,7 @@ static void _push_loc(IrWriter* w, int id, int32_t line, int32_t col, int scope_
 }
 
 // Reserve a metadata id for the current debug location. Returns -1 if none set.
-static int _reserve_dbg(IrWriter* w) {
+static int _reserve_dbg(IrWriter *w) {
   if (w->dbg_line < 0) {
     return -1;
   }
@@ -89,14 +83,14 @@ static int _reserve_dbg(IrWriter* w) {
   return id;
 }
 
-static void _emit_dbg_suffix(IrWriter* w, int id) {
+static void _emit_dbg_suffix(IrWriter *w, int id) {
   if (id >= 0) {
     fprintf(w->out, ", !dbg !%d", id);
   }
 }
 
-void irwriter_define_start(IrWriter* w, const char* name, const char* ret_type, int argc, const char** arg_types,
-                           const char** arg_names) {
+void irwriter_define_start(IrWriter *w, const char *name, const char *ret_type, int argc, const char **arg_types,
+                           const char **arg_names) {
   // Emit module-level debug metadata once
   if (!w->dbg_flags_emitted) {
     w->dbg_flags_emitted = 1;
@@ -141,11 +135,11 @@ void irwriter_define_start(IrWriter* w, const char* name, const char* ret_type, 
   fprintf(w->out, ") !dbg !%d {\n", w->dbg_sub_id);
 }
 
-void irwriter_define_end(IrWriter* w) {
+void irwriter_define_end(IrWriter *w) {
   fprintf(w->out, "}\n\n");
   // Emit pending debug locations
   for (int i = 0; i < w->nlocs; i++) {
-    PendingLoc* l = &w->locs[i];
+    PendingLoc *l = &w->locs[i];
     fprintf(w->out, "!%d = !DILocation(line: %d, column: %d, scope: !%d)\n", l->id, l->line, l->col, l->scope_id);
   }
   if (w->nlocs > 0) {
@@ -154,108 +148,112 @@ void irwriter_define_end(IrWriter* w) {
   w->nlocs = 0;
 }
 
-void irwriter_bb(IrWriter* w, const char* label) { fprintf(w->out, "%s:\n", label); }
+void irwriter_bb(IrWriter *w, const char *label) { fprintf(w->out, "%s:\n", label); }
 
-void irwriter_dbg(IrWriter* w, int32_t line, int32_t col) {
+void irwriter_dbg(IrWriter *w, int32_t line, int32_t col) {
   w->dbg_line = line;
   w->dbg_col = col;
 }
 
-const char* irwriter_binop(IrWriter* w, const char* op, const char* ty, const char* lhs, const char* rhs) {
-  const char* r = _next_reg(w);
+int32_t irwriter_binop(IrWriter *w, char *buf, int32_t buf_size, const char *op, const char *ty, const char *lhs,
+                       const char *rhs) {
+  int32_t n = _next_reg(w, buf, buf_size);
   int dbg = _reserve_dbg(w);
-  fprintf(w->out, "  %s = %s %s %s, %s", r, op, ty, lhs, rhs);
+  fprintf(w->out, "  %s = %s %s %s, %s", buf, op, ty, lhs, rhs);
   _emit_dbg_suffix(w, dbg);
   fprintf(w->out, "\n");
-  return r;
+  return n;
 }
 
-const char* irwriter_binop_imm(IrWriter* w, const char* op, const char* ty, const char* lhs, int64_t rhs) {
-  const char* r = _next_reg(w);
+int32_t irwriter_binop_imm(IrWriter *w, char *buf, int32_t buf_size, const char *op, const char *ty, const char *lhs,
+                           int64_t rhs) {
+  int32_t n = _next_reg(w, buf, buf_size);
   int dbg = _reserve_dbg(w);
-  fprintf(w->out, "  %s = %s %s %s, %lld", r, op, ty, lhs, (long long)rhs);
+  fprintf(w->out, "  %s = %s %s %s, %lld", buf, op, ty, lhs, (long long)rhs);
   _emit_dbg_suffix(w, dbg);
   fprintf(w->out, "\n");
-  return r;
+  return n;
 }
 
-const char* irwriter_icmp(IrWriter* w, const char* pred, const char* ty, const char* lhs, const char* rhs) {
-  const char* r = _next_reg(w);
+int32_t irwriter_icmp(IrWriter *w, char *buf, int32_t buf_size, const char *pred, const char *ty, const char *lhs,
+                      const char *rhs) {
+  int32_t n = _next_reg(w, buf, buf_size);
   int dbg = _reserve_dbg(w);
-  fprintf(w->out, "  %s = icmp %s %s %s, %s", r, pred, ty, lhs, rhs);
+  fprintf(w->out, "  %s = icmp %s %s %s, %s", buf, pred, ty, lhs, rhs);
   _emit_dbg_suffix(w, dbg);
   fprintf(w->out, "\n");
-  return r;
+  return n;
 }
 
-const char* irwriter_icmp_imm(IrWriter* w, const char* pred, const char* ty, const char* lhs, int64_t rhs) {
-  const char* r = _next_reg(w);
+int32_t irwriter_icmp_imm(IrWriter *w, char *buf, int32_t buf_size, const char *pred, const char *ty, const char *lhs,
+                          int64_t rhs) {
+  int32_t n = _next_reg(w, buf, buf_size);
   int dbg = _reserve_dbg(w);
-  fprintf(w->out, "  %s = icmp %s %s %s, %lld", r, pred, ty, lhs, (long long)rhs);
+  fprintf(w->out, "  %s = icmp %s %s %s, %lld", buf, pred, ty, lhs, (long long)rhs);
   _emit_dbg_suffix(w, dbg);
   fprintf(w->out, "\n");
-  return r;
+  return n;
 }
 
-void irwriter_br(IrWriter* w, const char* label) {
+void irwriter_br(IrWriter *w, const char *label) {
   int dbg = _reserve_dbg(w);
   fprintf(w->out, "  br label %%%s", label);
   _emit_dbg_suffix(w, dbg);
   fprintf(w->out, "\n");
 }
 
-void irwriter_br_cond(IrWriter* w, const char* cond, const char* if_true, const char* if_false) {
+void irwriter_br_cond(IrWriter *w, const char *cond, const char *if_true, const char *if_false) {
   int dbg = _reserve_dbg(w);
   fprintf(w->out, "  br i1 %s, label %%%s, label %%%s", cond, if_true, if_false);
   _emit_dbg_suffix(w, dbg);
   fprintf(w->out, "\n");
 }
 
-void irwriter_switch_start(IrWriter* w, const char* ty, const char* val, const char* default_label) {
+void irwriter_switch_start(IrWriter *w, const char *ty, const char *val, const char *default_label) {
   w->switch_dbg_id = _reserve_dbg(w);
   fprintf(w->out, "  switch %s %s, label %%%s [\n", ty, val, default_label);
   w->in_switch = 1;
 }
 
-void irwriter_switch_case(IrWriter* w, const char* ty, int64_t val, const char* label) {
+void irwriter_switch_case(IrWriter *w, const char *ty, int64_t val, const char *label) {
   fprintf(w->out, "    %s %lld, label %%%s\n", ty, (long long)val, label);
 }
 
-void irwriter_switch_end(IrWriter* w) {
+void irwriter_switch_end(IrWriter *w) {
   fprintf(w->out, "  ]");
   _emit_dbg_suffix(w, w->switch_dbg_id);
   fprintf(w->out, "\n");
   w->in_switch = 0;
 }
 
-void irwriter_ret(IrWriter* w, const char* ty, const char* val) {
+void irwriter_ret(IrWriter *w, const char *ty, const char *val) {
   int dbg = _reserve_dbg(w);
   fprintf(w->out, "  ret %s %s", ty, val);
   _emit_dbg_suffix(w, dbg);
   fprintf(w->out, "\n");
 }
 
-const char* irwriter_insertvalue(IrWriter* w, const char* agg_ty, const char* agg_val, const char* elem_ty,
-                                 const char* elem_val, int idx) {
-  const char* r = _next_reg(w);
+int32_t irwriter_insertvalue(IrWriter *w, char *buf, int32_t buf_size, const char *agg_ty, const char *agg_val,
+                             const char *elem_ty, const char *elem_val, int idx) {
+  int32_t n = _next_reg(w, buf, buf_size);
   int dbg = _reserve_dbg(w);
-  fprintf(w->out, "  %s = insertvalue %s %s, %s %s, %d", r, agg_ty, agg_val, elem_ty, elem_val, idx);
+  fprintf(w->out, "  %s = insertvalue %s %s, %s %s, %d", buf, agg_ty, agg_val, elem_ty, elem_val, idx);
   _emit_dbg_suffix(w, dbg);
   fprintf(w->out, "\n");
-  return r;
+  return n;
 }
 
-const char* irwriter_insertvalue_imm(IrWriter* w, const char* agg_ty, const char* agg_val, const char* elem_ty,
-                                     int64_t elem_val, int idx) {
-  const char* r = _next_reg(w);
+int32_t irwriter_insertvalue_imm(IrWriter *w, char *buf, int32_t buf_size, const char *agg_ty, const char *agg_val,
+                                 const char *elem_ty, int64_t elem_val, int idx) {
+  int32_t n = _next_reg(w, buf, buf_size);
   int dbg = _reserve_dbg(w);
-  fprintf(w->out, "  %s = insertvalue %s %s, %s %lld, %d", r, agg_ty, agg_val, elem_ty, (long long)elem_val, idx);
+  fprintf(w->out, "  %s = insertvalue %s %s, %s %lld, %d", buf, agg_ty, agg_val, elem_ty, (long long)elem_val, idx);
   _emit_dbg_suffix(w, dbg);
   fprintf(w->out, "\n");
-  return r;
+  return n;
 }
 
-void irwriter_declare(IrWriter* w, const char* ret_type, const char* name, const char* arg_types) {
+void irwriter_declare(IrWriter *w, const char *ret_type, const char *name, const char *arg_types) {
   for (int i = 0; i < w->ndecls; i++) {
     if (strcmp(w->decls[i], name) == 0) {
       return;
@@ -263,13 +261,13 @@ void irwriter_declare(IrWriter* w, const char* ret_type, const char* name, const
   }
   if (w->ndecls == w->decls_cap) {
     w->decls_cap = w->decls_cap ? w->decls_cap * 2 : 8;
-    w->decls = realloc(w->decls, (size_t)w->decls_cap * sizeof(const char*));
+    w->decls = realloc(w->decls, (size_t)w->decls_cap * sizeof(const char *));
   }
   w->decls[w->ndecls++] = strdup(name);
   fprintf(w->out, "declare %s @%s(%s)\n\n", ret_type, name, arg_types);
 }
 
-void irwriter_call_void(IrWriter* w, const char* name) {
+void irwriter_call_void(IrWriter *w, const char *name) {
   int dbg = _reserve_dbg(w);
   fprintf(w->out, "  call void @%s()", name);
   _emit_dbg_suffix(w, dbg);
