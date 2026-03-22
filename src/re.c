@@ -175,7 +175,7 @@ void re_lparen(Re* re) {
   GroupFrame* f = _top(re);
   int32_t start = f->cur_state;
   int32_t branch = _alloc_state(re);
-  aut_epsilon(re->aut, start, branch, 0);
+  aut_epsilon(re->aut, start, branch);
   _push_frame(re, start, branch);
 }
 
@@ -183,7 +183,7 @@ void re_fork(Re* re) {
   GroupFrame* f = _top(re);
   _save_branch_end(f, f->cur_state);
   int32_t branch = _alloc_state(re);
-  aut_epsilon(re->aut, f->start_state, branch, 0);
+  aut_epsilon(re->aut, f->start_state, branch);
   f->cur_state = branch;
 }
 
@@ -194,7 +194,7 @@ void re_rparen(Re* re) {
 
   int32_t exit_state = _alloc_state(re);
   for (int32_t i = 0; i < f->nbranch_ends; i++) {
-    aut_epsilon(re->aut, f->branch_ends[i], exit_state, 0);
+    aut_epsilon(re->aut, f->branch_ends[i], exit_state);
   }
 
   free(f->branch_ends);
@@ -207,6 +207,7 @@ void re_rparen(Re* re) {
 void re_action(Re* re, int32_t action_id) {
   GroupFrame* f = _top(re);
   int32_t s = _alloc_state(re);
-  aut_epsilon(re->aut, f->cur_state, s, action_id);
+  aut_epsilon(re->aut, f->cur_state, s);
+  aut_action(re->aut, s, action_id);
   f->cur_state = s;
 }

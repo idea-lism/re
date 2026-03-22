@@ -36,7 +36,8 @@ static char* _gen_ir(void (*fn)(Aut*, IrWriter*)) {
 
 static void _build_single(Aut* a, IrWriter* w) {
   aut_transition(a, (TransitionDef){0, 1, 'A', 'A'}, (DebugInfo){1, 1});
-  aut_epsilon(a, 1, 2, 1);
+  aut_epsilon(a, 1, 2);
+  aut_action(a, 2, 1);
   aut_gen_dfa(a, w, false);
 }
 
@@ -44,9 +45,7 @@ TEST(test_single_transition) {
   char* out = _gen_ir(_build_single);
   assert(strstr(out, "define {i32, i32} @match(i32 %state, i32 %cp)"));
   assert(strstr(out, "switch i32 %state, label %dead"));
-  // State 0 should have a switch on cp with case 65 ('A')
   assert(strstr(out, "i32 65, label %s0_t0"));
-  // Match block returns {1, 1}
   assert(strstr(out, "s0_t0:"));
   free(out);
 }
@@ -55,13 +54,13 @@ TEST(test_single_transition) {
 
 static void _build_range(Aut* a, IrWriter* w) {
   aut_transition(a, (TransitionDef){0, 1, 'A', 'Z'}, (DebugInfo){1, 1});
-  aut_epsilon(a, 1, 2, 1);
+  aut_epsilon(a, 1, 2);
+  aut_action(a, 2, 1);
   aut_gen_dfa(a, w, false);
 }
 
 TEST(test_range_transition) {
   char* out = _gen_ir(_build_range);
-  // Should use range check: icmp sge ... 65, icmp sle ... 90
   assert(strstr(out, "icmp sge i32 %cp, 65"));
   assert(strstr(out, "icmp sle i32 %cp, 90"));
   free(out);
@@ -71,15 +70,16 @@ TEST(test_range_transition) {
 
 static void _build_multi(Aut* a, IrWriter* w) {
   aut_transition(a, (TransitionDef){0, 1, 'A', 'Z'}, (DebugInfo){1, 1});
-  aut_epsilon(a, 1, 3, 1);
+  aut_epsilon(a, 1, 3);
+  aut_action(a, 3, 1);
   aut_transition(a, (TransitionDef){0, 2, 'a', 'z'}, (DebugInfo){2, 1});
-  aut_epsilon(a, 2, 4, 2);
+  aut_epsilon(a, 2, 4);
+  aut_action(a, 4, 2);
   aut_gen_dfa(a, w, false);
 }
 
 TEST(test_multi_transitions) {
   char* out = _gen_ir(_build_multi);
-  // Two range checks
   assert(strstr(out, "icmp sge i32 %cp, 65"));
   assert(strstr(out, "icmp sle i32 %cp, 90"));
   assert(strstr(out, "icmp sge i32 %cp, 97"));
@@ -90,35 +90,34 @@ TEST(test_multi_transitions) {
 // --- Epsilon transitions ---
 
 static void _build_epsilon(Aut* a, IrWriter* w) {
-  // State 0 --eps--> state 1, state 1 --'x'--> state 2 with action 1
-  aut_epsilon(a, 0, 1, 0);
+  aut_epsilon(a, 0, 1);
   aut_transition(a, (TransitionDef){1, 2, 'x', 'x'}, (DebugInfo){1, 1});
-  aut_epsilon(a, 2, 3, 1);
+  aut_epsilon(a, 2, 3);
+  aut_action(a, 3, 1);
   aut_gen_dfa(a, w, false);
 }
 
 TEST(test_epsilon) {
   char* out = _gen_ir(_build_epsilon);
-  // After determinization, DFA state 0 = {NFA 0, NFA 1} (eps closure).
-  // So from DFA state 0, input 'x' should go somewhere with action 1.
-  assert(strstr(out, "i32 120")); // 'x' = 120
+  assert(strstr(out, "i32 120"));
   free(out);
 }
 
 // --- Special codepoints ---
 
 static void _build_special_cp(Aut* a, IrWriter* w) {
-  aut_transition(a, (TransitionDef){0, 1, -1, -1}, (DebugInfo){1, 1}); // BOF
+  aut_transition(a, (TransitionDef){0, 1, -1, -1}, (DebugInfo){1, 1});
   aut_transition(a, (TransitionDef){1, 2, 'a', 'z'}, (DebugInfo){1, 5});
-  aut_epsilon(a, 2, 3, 1);
-  aut_transition(a, (TransitionDef){3, 4, -2, -2}, (DebugInfo){1, 10}); // EOF
-  aut_epsilon(a, 4, 5, 2);
+  aut_epsilon(a, 2, 3);
+  aut_action(a, 3, 1);
+  aut_transition(a, (TransitionDef){3, 4, -2, -2}, (DebugInfo){1, 10});
+  aut_epsilon(a, 4, 5);
+  aut_action(a, 5, 2);
   aut_gen_dfa(a, w, false);
 }
 
 TEST(test_special_codepoints) {
   char* out = _gen_ir(_build_special_cp);
-  // BOF = -1, EOF = -2 treated as normal codepoints
   assert(strstr(out, "-1"));
   assert(strstr(out, "-2"));
   free(out);
@@ -128,7 +127,6 @@ TEST(test_special_codepoints) {
 
 TEST(test_dead_state) {
   char* out = _gen_ir(_build_single);
-  // Dead state should return {state, -2}
   assert(strstr(out, "dead:"));
   free(out);
 }
@@ -136,20 +134,17 @@ TEST(test_dead_state) {
 // --- Action ID: smallest returned ---
 
 static void _build_action_smallest(Aut* a, IrWriter* w) {
-  // Two transitions from state 0 on overlapping range, different actions
-  // action 5 on [A-Z], action 3 on [M-M]
   aut_transition(a, (TransitionDef){0, 1, 'A', 'Z'}, (DebugInfo){1, 1});
-  aut_epsilon(a, 1, 3, 5);
+  aut_epsilon(a, 1, 3);
+  aut_action(a, 3, 5);
   aut_transition(a, (TransitionDef){0, 2, 'M', 'M'}, (DebugInfo){1, 5});
-  aut_epsilon(a, 2, 4, 3);
+  aut_epsilon(a, 2, 4);
+  aut_action(a, 4, 3);
   aut_gen_dfa(a, w, false);
 }
 
 TEST(test_action_smallest) {
   char* out = _gen_ir(_build_action_smallest);
-  // For 'M' (77), we expect the NFA has both transitions matching.
-  // The determinized transition for the sub-interval covering 'M' should pick action_id=3 (smallest).
-  // Check that 3 appears as an action_id insertvalue
   assert(strstr(out, "i32 3, 1"));
   free(out);
 }
@@ -158,7 +153,8 @@ TEST(test_action_smallest) {
 
 static void _build_debug(Aut* a, IrWriter* w) {
   aut_transition(a, (TransitionDef){0, 1, 'A', 'A'}, (DebugInfo){10, 5});
-  aut_epsilon(a, 1, 2, 1);
+  aut_epsilon(a, 1, 2);
+  aut_action(a, 2, 1);
   aut_gen_dfa(a, w, false);
 }
 
@@ -173,7 +169,8 @@ TEST(test_debug_info) {
 
 static void _build_debug_trap(Aut* a, IrWriter* w) {
   aut_transition(a, (TransitionDef){0, 1, 'A', 'A'}, (DebugInfo){1, 1});
-  aut_epsilon(a, 1, 2, 1);
+  aut_epsilon(a, 1, 2);
+  aut_action(a, 2, 1);
   aut_gen_dfa(a, w, true);
 }
 
@@ -187,53 +184,169 @@ TEST(test_debug_trap) {
 // --- Optimize (Brzozowski) ---
 
 static void _build_redundant(Aut* a, IrWriter* w) {
-  // Create redundant NFA: states 0,1,2 where 1 and 2 behave identically
-  // 0 --'a'--> 1, 0 --'b'--> 2
-  // 1 --'c'--> 3 (action 1), 2 --'c'--> 3 (action 1)
   aut_transition(a, (TransitionDef){0, 1, 'a', 'a'}, (DebugInfo){1, 1});
   aut_transition(a, (TransitionDef){0, 2, 'b', 'b'}, (DebugInfo){1, 5});
   aut_transition(a, (TransitionDef){1, 3, 'c', 'c'}, (DebugInfo){2, 1});
-  aut_epsilon(a, 3, 5, 1);
+  aut_action(a, 3, 1);
   aut_transition(a, (TransitionDef){2, 4, 'c', 'c'}, (DebugInfo){2, 5});
-  aut_epsilon(a, 4, 6, 1);
+  aut_action(a, 4, 1);
   aut_optimize(a);
   aut_gen_dfa(a, w, false);
 }
 
 TEST(test_optimize) {
   char* out = _gen_ir(_build_redundant);
-  // After Brzozowski, states 1 and 2 should be merged.
-  // The IR should still be valid and contain the expected structure.
   assert(strstr(out, "define {i32, i32} @match"));
   assert(strstr(out, "switch i32 %state, label %dead"));
   free(out);
 }
 
 TEST(test_optimize_reduces_states) {
-  // Build redundant NFA without optimization, count DFA states.
   Aut* a1 = aut_new("m", "test.rules");
   aut_transition(a1, (TransitionDef){0, 1, 'a', 'a'}, (DebugInfo){1, 1});
   aut_transition(a1, (TransitionDef){0, 2, 'b', 'b'}, (DebugInfo){1, 5});
   aut_transition(a1, (TransitionDef){1, 3, 'c', 'c'}, (DebugInfo){2, 1});
-  aut_epsilon(a1, 3, 5, 1);
+  aut_action(a1, 3, 1);
   aut_transition(a1, (TransitionDef){2, 4, 'c', 'c'}, (DebugInfo){2, 5});
-  aut_epsilon(a1, 4, 6, 1);
+  aut_action(a1, 4, 1);
   int32_t unoptimized = aut_dfa_nstates(a1);
   aut_del(a1);
 
-  // Build identical NFA with optimization, count DFA states.
   Aut* a2 = aut_new("m", "test.rules");
   aut_transition(a2, (TransitionDef){0, 1, 'a', 'a'}, (DebugInfo){1, 1});
   aut_transition(a2, (TransitionDef){0, 2, 'b', 'b'}, (DebugInfo){1, 5});
   aut_transition(a2, (TransitionDef){1, 3, 'c', 'c'}, (DebugInfo){2, 1});
-  aut_epsilon(a2, 3, 5, 1);
+  aut_action(a2, 3, 1);
   aut_transition(a2, (TransitionDef){2, 4, 'c', 'c'}, (DebugInfo){2, 5});
-  aut_epsilon(a2, 4, 6, 1);
+  aut_action(a2, 4, 1);
   aut_optimize(a2);
   int32_t optimized = aut_dfa_nstates(a2);
   aut_del(a2);
 
   assert(optimized < unoptimized);
+}
+
+// --- aut_action basic test ---
+
+static void _build_action_basic(Aut* a, IrWriter* w) {
+  aut_transition(a, (TransitionDef){0, 1, 'x', 'x'}, (DebugInfo){1, 1});
+  aut_action(a, 1, 7);
+  aut_gen_dfa(a, w, false);
+}
+
+TEST(test_action_basic) {
+  char* out = _gen_ir(_build_action_basic);
+  assert(strstr(out, "i32 7, 1"));
+  free(out);
+}
+
+// --- MIN-RULE: multiple action_ids on same state, smallest wins ---
+
+static void _build_min_rule(Aut* a, IrWriter* w) {
+  aut_transition(a, (TransitionDef){0, 1, 'x', 'x'}, (DebugInfo){1, 1});
+  aut_action(a, 1, 10);
+  aut_action(a, 1, 3);
+  aut_action(a, 1, 7);
+  aut_gen_dfa(a, w, false);
+}
+
+TEST(test_min_rule) {
+  char* out = _gen_ir(_build_min_rule);
+  assert(strstr(out, "i32 3, 1"));
+  free(out);
+}
+
+// --- PRESERVING-RULE: action_ids survive optimization ---
+
+static void _build_preserve(Aut* a, IrWriter* w) {
+  // 0 --'a'--> 1 (action 2), 0 --'b'--> 2 (action 2)
+  // 1 --'c'--> 3, 2 --'c'--> 4 (both with same action)
+  // States 1 and 2 are equivalent and should merge, but action_id=2 must survive.
+  aut_transition(a, (TransitionDef){0, 1, 'a', 'a'}, (DebugInfo){1, 1});
+  aut_action(a, 1, 2);
+  aut_transition(a, (TransitionDef){0, 2, 'b', 'b'}, (DebugInfo){1, 5});
+  aut_action(a, 2, 2);
+  aut_transition(a, (TransitionDef){1, 3, 'c', 'c'}, (DebugInfo){2, 1});
+  aut_action(a, 3, 5);
+  aut_transition(a, (TransitionDef){2, 4, 'c', 'c'}, (DebugInfo){2, 5});
+  aut_action(a, 4, 5);
+  aut_optimize(a);
+  aut_gen_dfa(a, w, false);
+}
+
+TEST(test_preserving_rule) {
+  char* out = _gen_ir(_build_preserve);
+  // action_id=2 must appear (on transitions to the merged state for 'a'/'b')
+  assert(strstr(out, "i32 2, 1"));
+  // action_id=5 must appear (on transitions for 'c')
+  assert(strstr(out, "i32 5, 1"));
+  free(out);
+}
+
+// --- Optimize reduces states AND preserves actions ---
+
+TEST(test_optimize_preserves_action) {
+  // Without optimization
+  char* unopt = NULL;
+  {
+    char* buf = NULL;
+    size_t sz = 0;
+    FILE* f = open_memstream(&buf, &sz);
+    assert(f);
+    IrWriter* w = irwriter_new(f, TARGET);
+    irwriter_start(w, "test.rules", ".");
+    Aut* a = aut_new("match", "test.rules");
+    aut_transition(a, (TransitionDef){0, 1, 'a', 'a'}, (DebugInfo){1, 1});
+    aut_action(a, 1, 3);
+    aut_transition(a, (TransitionDef){0, 2, 'b', 'b'}, (DebugInfo){1, 5});
+    aut_action(a, 2, 3);
+    aut_transition(a, (TransitionDef){1, 3, 'd', 'd'}, (DebugInfo){2, 1});
+    aut_action(a, 3, 4);
+    aut_transition(a, (TransitionDef){2, 4, 'd', 'd'}, (DebugInfo){2, 5});
+    aut_action(a, 4, 4);
+    aut_gen_dfa(a, w, false);
+    aut_del(a);
+    irwriter_end(w);
+    irwriter_del(w);
+    fclose(f);
+    unopt = buf;
+  }
+
+  // With optimization
+  char* opt = NULL;
+  {
+    char* buf = NULL;
+    size_t sz = 0;
+    FILE* f = open_memstream(&buf, &sz);
+    assert(f);
+    IrWriter* w = irwriter_new(f, TARGET);
+    irwriter_start(w, "test.rules", ".");
+    Aut* a = aut_new("match", "test.rules");
+    aut_transition(a, (TransitionDef){0, 1, 'a', 'a'}, (DebugInfo){1, 1});
+    aut_action(a, 1, 3);
+    aut_transition(a, (TransitionDef){0, 2, 'b', 'b'}, (DebugInfo){1, 5});
+    aut_action(a, 2, 3);
+    aut_transition(a, (TransitionDef){1, 3, 'd', 'd'}, (DebugInfo){2, 1});
+    aut_action(a, 3, 4);
+    aut_transition(a, (TransitionDef){2, 4, 'd', 'd'}, (DebugInfo){2, 5});
+    aut_action(a, 4, 4);
+    aut_optimize(a);
+    aut_gen_dfa(a, w, false);
+    aut_del(a);
+    irwriter_end(w);
+    irwriter_del(w);
+    fclose(f);
+    opt = buf;
+  }
+
+  // Both must have action_id=3 and action_id=4
+  assert(strstr(unopt, "i32 3, 1"));
+  assert(strstr(unopt, "i32 4, 1"));
+  assert(strstr(opt, "i32 3, 1"));
+  assert(strstr(opt, "i32 4, 1"));
+
+  free(unopt);
+  free(opt);
 }
 
 // --- Clang compilation ---
@@ -296,6 +409,12 @@ TEST(test_compile_debug) { _write_and_compile(_build_debug, "debug"); }
 
 TEST(test_compile_debug_trap) { _write_and_compile(_build_debug_trap, "debug_trap"); }
 
+TEST(test_compile_action_basic) { _write_and_compile(_build_action_basic, "action_basic"); }
+
+TEST(test_compile_min_rule) { _write_and_compile(_build_min_rule, "min_rule"); }
+
+TEST(test_compile_preserve) { _write_and_compile(_build_preserve, "preserve"); }
+
 // --- Lifecycle ---
 
 TEST(test_lifecycle) {
@@ -336,9 +455,13 @@ int main(void) {
   RUN(test_special_codepoints);
   RUN(test_dead_state);
   RUN(test_action_smallest);
+  RUN(test_action_basic);
+  RUN(test_min_rule);
   RUN(test_debug_info);
   RUN(test_optimize);
   RUN(test_optimize_reduces_states);
+  RUN(test_preserving_rule);
+  RUN(test_optimize_preserves_action);
   RUN(test_compile_single);
   RUN(test_compile_range);
   RUN(test_compile_multi);
@@ -348,6 +471,9 @@ int main(void) {
   RUN(test_compile_debug);
   RUN(test_debug_trap);
   RUN(test_compile_debug_trap);
+  RUN(test_compile_action_basic);
+  RUN(test_compile_min_rule);
+  RUN(test_compile_preserve);
   printf("all ok\n");
   return 0;
 }

@@ -20,7 +20,6 @@ typedef struct {
 typedef struct {
   int32_t from;
   int32_t to;
-  int32_t action_id;
 } EpsTrans;
 
 // --- DFA state (after determinization) ---
@@ -53,6 +52,9 @@ struct Aut {
   int eps_ntrans;
   int eps_trans_cap;
 
+  int32_t* state_actions;
+  int32_t state_actions_cap;
+
   int32_t max_state;
 
   DfaState* dfa_states;
@@ -80,6 +82,7 @@ void aut_del(Aut* a) {
   }
   free(a->nfa_trans);
   free(a->eps_trans);
+  free(a->state_actions);
   for (int i = 0; i < a->dfa_nstates; i++) {
     bitset_del(a->dfa_states[i].nfa_states);
   }
@@ -111,23 +114,42 @@ void aut_transition(Aut* a, TransitionDef tdef, DebugInfo di) {
   _track_state(a, tdef.to_state_id);
 }
 
-void aut_epsilon(Aut* a, int32_t from_state, int32_t to_state, int32_t action_id) {
+void aut_epsilon(Aut* a, int32_t from_state, int32_t to_state) {
   if (a->eps_ntrans == a->eps_trans_cap) {
     a->eps_trans_cap = a->eps_trans_cap ? a->eps_trans_cap * 2 : 64;
     a->eps_trans = realloc(a->eps_trans, (size_t)a->eps_trans_cap * sizeof(EpsTrans));
   }
-  a->eps_trans[a->eps_ntrans++] = (EpsTrans){from_state, to_state, action_id};
+  a->eps_trans[a->eps_ntrans++] = (EpsTrans){from_state, to_state};
   _track_state(a, from_state);
   _track_state(a, to_state);
 }
 
-// --- Epsilon closure ---
-// Returns the closure bitset and writes the smallest non-zero action_id to *out_action (0 if none).
+void aut_action(Aut* a, int32_t state, int32_t action_id) {
+  if (action_id == 0) {
+    return;
+  }
+  _track_state(a, state);
+  if (state >= a->state_actions_cap) {
+    int32_t new_cap = a->state_actions_cap ? a->state_actions_cap : 64;
+    while (new_cap <= state) {
+      new_cap *= 2;
+    }
+    a->state_actions = realloc(a->state_actions, (size_t)new_cap * sizeof(int32_t));
+    memset(a->state_actions + a->state_actions_cap, 0, (size_t)(new_cap - a->state_actions_cap) * sizeof(int32_t));
+    a->state_actions_cap = new_cap;
+  }
+  // MIN-RULE: keep the smallest non-zero action_id
+  if (a->state_actions[state] == 0 || action_id < a->state_actions[state]) {
+    a->state_actions[state] = action_id;
+  }
+}
 
-static Bitset* _epsilon_closure(Bitset* states, EpsTrans* eps, int neps, int nstates, int32_t* out_action) {
+// --- Epsilon closure ---
+// Returns the closure bitset and writes the min non-zero action_id from states in the closure.
+
+static Bitset* _epsilon_closure(Bitset* states, EpsTrans* eps, int neps, int nstates, int32_t* sa, int32_t sa_n,
+                                int32_t* out_action) {
   Bitset* result = bitset_or(states, states); // copy
-  int32_t min_action = 0;
-  int has_action = 0;
   int changed = 1;
   while (changed) {
     changed = 0;
@@ -136,17 +158,19 @@ static Bitset* _epsilon_closure(Bitset* states, EpsTrans* eps, int neps, int nst
       uint32_t to = (uint32_t)eps[i].to;
       if (from < (uint32_t)nstates && bitset_contains(result, from) && !bitset_contains(result, to)) {
         bitset_add_bit(result, to);
-        if (eps[i].action_id != 0) {
-          if (!has_action || eps[i].action_id < min_action) {
-            min_action = eps[i].action_id;
-          }
-          has_action = 1;
-        }
         changed = 1;
       }
     }
   }
   if (out_action) {
+    int32_t min_action = 0;
+    for (int32_t i = 0; i < sa_n && i < nstates; i++) {
+      if (bitset_contains(result, (uint32_t)i) && sa[i] != 0) {
+        if (min_action == 0 || sa[i] < min_action) {
+          min_action = sa[i];
+        }
+      }
+    }
     *out_action = min_action;
   }
   return result;
@@ -172,10 +196,9 @@ static int _cmp_int32(const void* a, const void* b) {
 }
 
 // --- Subset construction ---
-// Takes NFA transitions, epsilon transitions, initial state set, and nfa state count.
-// Produces DFA states and transitions. Returns them through the Aut struct fields.
 
-static void _determinize(Aut* a, Bitset* initial, NfaTrans* nfa, int nnfa, EpsTrans* eps, int neps, int nstates) {
+static void _determinize(Aut* a, Bitset* initial, NfaTrans* nfa, int nnfa, EpsTrans* eps, int neps, int nstates,
+                         int32_t* sa, int32_t sa_n) {
   // Clear existing DFA
   for (int i = 0; i < a->dfa_nstates; i++) {
     bitset_del(a->dfa_states[i].nfa_states);
@@ -184,7 +207,7 @@ static void _determinize(Aut* a, Bitset* initial, NfaTrans* nfa, int nnfa, EpsTr
   a->dfa_ntrans = 0;
 
   // DFA state 0 = epsilon closure of initial
-  Bitset* start = _epsilon_closure(initial, eps, neps, nstates, NULL);
+  Bitset* start = _epsilon_closure(initial, eps, neps, nstates, sa, sa_n, NULL);
 
   if (a->dfa_nstates == a->dfa_states_cap) {
     a->dfa_states_cap = a->dfa_states_cap ? a->dfa_states_cap * 2 : 64;
@@ -221,18 +244,9 @@ static void _determinize(Aut* a, Bitset* initial, NfaTrans* nfa, int nnfa, EpsTr
     int cur_dfa = worklist_head++;
     Bitset* cur_set = a->dfa_states[cur_dfa].nfa_states;
 
-    // For each interval [splits[i], splits[i+1]-1]
-    for (int si = 0; si < nsplits; si++) {
+    for (int si = 0; si + 1 < nsplits; si++) {
       int32_t lo = splits[si];
-      int32_t hi = (si + 1 < nsplits) ? splits[si + 1] - 1 : splits[si];
-      if (si + 1 >= nsplits && nsplits > 0) {
-        // Last split point: the interval is just [splits[si], splits[si]]
-        // But actually, for correctness we only need intervals between consecutive split points.
-        // The last split point is an "end+1" marker, no interval starts there unless there's
-        // a transition with cp_start == splits[si].
-        // We handle this by only processing intervals [splits[i], splits[i+1)-1] for i < nsplits-1
-        break;
-      }
+      int32_t hi = splits[si + 1] - 1;
 
       // Find all NFA transitions that fire on any codepoint in [lo, hi]
       Bitset* target = bitset_new();
@@ -258,8 +272,8 @@ static void _determinize(Aut* a, Bitset* initial, NfaTrans* nfa, int nnfa, EpsTr
         continue;
       }
 
-      int32_t eps_action = 0;
-      Bitset* closed = _epsilon_closure(target, eps, neps, nstates, &eps_action);
+      int32_t action = 0;
+      Bitset* closed = _epsilon_closure(target, eps, neps, nstates, sa, sa_n, &action);
       bitset_del(target);
 
       // Find or create DFA state for closed
@@ -291,7 +305,7 @@ static void _determinize(Aut* a, Bitset* initial, NfaTrans* nfa, int nnfa, EpsTr
           .to = found,
           .cp_start = lo,
           .cp_end = hi,
-          .action_id = eps_action,
+          .action_id = action,
           .line = best_line,
           .col = best_col,
       };
@@ -301,57 +315,21 @@ static void _determinize(Aut* a, Bitset* initial, NfaTrans* nfa, int nnfa, EpsTr
   free(splits);
 }
 
-// --- Reverse an NFA ---
-// Swaps from/to on all transitions and epsilon transitions.
-// Creates a new super-start state with epsilon transitions to all old "accepting" states.
-// For our model: every NFA state that has a non-zero action_id on an outgoing transition,
-// or every state reachable from the original NFA, is considered for reversal.
-// The old start state (0) becomes an accepting concept — but since we don't have accept states,
-// we just reverse all edges and add a super start.
+// --- Simple determinization for when optimize is not called ---
 
-static void _reverse_nfa(NfaTrans** out_trans, int* out_ntrans, EpsTrans** out_eps, int* out_neps,
-                        int32_t* out_max_state, NfaTrans* trans, int ntrans, EpsTrans* eps, int neps,
-                        int32_t old_max_state, int32_t old_start) {
-  int32_t super_start = old_max_state + 1;
-  *out_max_state = super_start;
-
-  // Reversed transitions: swap from/to
-  *out_ntrans = ntrans;
-  *out_trans = malloc((size_t)ntrans * sizeof(NfaTrans));
-  for (int i = 0; i < ntrans; i++) {
-    (*out_trans)[i] = (NfaTrans){
-        .from = trans[i].to,
-        .to = trans[i].from,
-        .cp_start = trans[i].cp_start,
-        .cp_end = trans[i].cp_end,
-        .line = trans[i].line,
-        .col = trans[i].col,
-    };
-  }
-
-  // Reversed epsilon transitions + super start -> all states that were accepting
-  // Actions are on epsilon transitions. Reverse them (swap from/to, keep action_id).
-  // Super start connects to all states except old_start with action_id=0.
-
-  int max_eps = neps + (int)(old_max_state + 1);
-  *out_eps = malloc((size_t)max_eps * sizeof(EpsTrans));
-  *out_neps = 0;
-
-  // Reversed epsilon transitions
-  for (int i = 0; i < neps; i++) {
-    (*out_eps)[(*out_neps)++] = (EpsTrans){eps[i].to, eps[i].from, eps[i].action_id};
-  }
-
-  // Super start -> all states except old_start
-  for (int32_t s = 0; s <= old_max_state; s++) {
-    if (s != old_start) {
-      (*out_eps)[(*out_neps)++] = (EpsTrans){super_start, s, 0};
-    }
-  }
+static void _simple_determinize(Aut* a) {
+  int nstates = a->max_state + 1;
+  Bitset* init = bitset_new();
+  bitset_add_bit(init, 0);
+  _determinize(a, init, a->nfa_trans, a->nfa_ntrans, a->eps_trans, a->eps_ntrans, nstates, a->state_actions,
+               a->state_actions_cap);
+  bitset_del(init);
 }
 
-// --- Brzozowski minimization ---
-// reverse -> _determinize -> reverse -> _determinize
+// --- Partition refinement (Hopcroft-style) minimization ---
+// Determinize first, then merge equivalent DFA states.
+// Two states are equivalent if they have the same transitions
+// (same target partition and same action_id) for every codepoint interval.
 
 void aut_optimize(Aut* a) {
   if (a->max_state < 0) {
@@ -359,95 +337,245 @@ void aut_optimize(Aut* a) {
     return;
   }
 
+  // First determinize the NFA into a DFA
+  _simple_determinize(a);
 
-  // --- First pass: reverse -> _determinize ---
-  NfaTrans* rev1_trans = NULL;
-  int rev1_ntrans = 0;
-  EpsTrans* rev1_eps = NULL;
-  int rev1_neps = 0;
-  int32_t rev1_max = 0;
+  int n = a->dfa_nstates;
+  if (n <= 1) {
+    a->optimized = 1;
+    return;
+  }
 
-  _reverse_nfa(&rev1_trans, &rev1_ntrans, &rev1_eps, &rev1_neps, &rev1_max, a->nfa_trans, a->nfa_ntrans, a->eps_trans,
-              a->eps_ntrans, a->max_state, 0);
+  // Collect all split points from DFA transitions
+  int32_t* splits = NULL;
+  int nsplits = 0;
+  int splits_cap = 0;
+  for (int t = 0; t < a->dfa_ntrans; t++) {
+    if (nsplits + 2 > splits_cap) {
+      splits_cap = splits_cap ? splits_cap * 2 : 128;
+      splits = realloc(splits, (size_t)splits_cap * sizeof(int32_t));
+    }
+    splits[nsplits++] = a->dfa_trans[t].cp_start;
+    splits[nsplits++] = a->dfa_trans[t].cp_end + 1;
+  }
+  qsort(splits, (size_t)nsplits, sizeof(int32_t), _cmp_int32);
+  int dedup = 0;
+  for (int i = 0; i < nsplits; i++) {
+    if (dedup == 0 || splits[dedup - 1] != splits[i]) {
+      splits[dedup++] = splits[i];
+    }
+  }
+  nsplits = dedup;
+  int nintervals = nsplits > 1 ? nsplits - 1 : 0;
 
-  int rev1_nstates = rev1_max + 1;
+  // For each state and interval, precompute (target_state, action_id).
+  // -1 means no transition.
+  int32_t* tgt = calloc((size_t)(n * nintervals), sizeof(int32_t));
+  int32_t* act = calloc((size_t)(n * nintervals), sizeof(int32_t));
+  for (int i = 0; i < n * nintervals; i++) {
+    tgt[i] = -1;
+  }
 
-  // Initial state for determinization = {super_start}
-  Bitset* init1 = bitset_new();
-  bitset_add_bit(init1, (uint32_t)rev1_max); // super_start
-  _determinize(a, init1, rev1_trans, rev1_ntrans, rev1_eps, rev1_neps, rev1_nstates);
-  bitset_del(init1);
-  free(rev1_trans);
-  free(rev1_eps);
-
-  // Now a has DFA states and transitions from first determinization.
-  // Convert DFA back to NFA format for second reverse.
-  // DFA transitions with action_id become: char transition to intermediate state + epsilon with action.
-  int dfa1_nstates = a->dfa_nstates;
-  int dfa1_ntrans = a->dfa_ntrans;
-  NfaTrans* nfa2 = malloc((size_t)dfa1_ntrans * sizeof(NfaTrans));
-  EpsTrans* eps2 = NULL;
-  int eps2_n = 0;
-  int eps2_cap = 0;
-  int32_t next_state = (int32_t)dfa1_nstates;
-
-  for (int i = 0; i < dfa1_ntrans; i++) {
-    if (a->dfa_trans[i].action_id != 0) {
-      int32_t mid = next_state++;
-      nfa2[i] = (NfaTrans){
-          .from = a->dfa_trans[i].from,
-          .to = mid,
-          .cp_start = a->dfa_trans[i].cp_start,
-          .cp_end = a->dfa_trans[i].cp_end,
-          .line = a->dfa_trans[i].line,
-          .col = a->dfa_trans[i].col,
-      };
-      if (eps2_n == eps2_cap) {
-        eps2_cap = eps2_cap ? eps2_cap * 2 : 64;
-        eps2 = realloc(eps2, (size_t)eps2_cap * sizeof(EpsTrans));
+  for (int t = 0; t < a->dfa_ntrans; t++) {
+    int s = a->dfa_trans[t].from;
+    for (int si = 0; si < nintervals; si++) {
+      int32_t lo = splits[si];
+      int32_t hi = splits[si + 1] - 1;
+      if (a->dfa_trans[t].cp_start <= lo && a->dfa_trans[t].cp_end >= hi) {
+        tgt[s * nintervals + si] = a->dfa_trans[t].to;
+        act[s * nintervals + si] = a->dfa_trans[t].action_id;
       }
-      eps2[eps2_n++] = (EpsTrans){mid, a->dfa_trans[i].to, a->dfa_trans[i].action_id};
-    } else {
-      nfa2[i] = (NfaTrans){
-          .from = a->dfa_trans[i].from,
-          .to = a->dfa_trans[i].to,
-          .cp_start = a->dfa_trans[i].cp_start,
-          .cp_end = a->dfa_trans[i].cp_end,
-          .line = a->dfa_trans[i].line,
-          .col = a->dfa_trans[i].col,
-      };
     }
   }
 
-  // --- Second pass: reverse -> _determinize ---
-  NfaTrans* rev2_trans = NULL;
-  int rev2_ntrans = 0;
-  EpsTrans* rev2_eps = NULL;
-  int rev2_neps = 0;
-  int32_t rev2_max = 0;
+  // Partition: partition[s] = partition id for state s
+  int32_t* partition = calloc((size_t)n, sizeof(int32_t));
+  int npartitions = 0;
 
-  _reverse_nfa(&rev2_trans, &rev2_ntrans, &rev2_eps, &rev2_neps, &rev2_max, nfa2, dfa1_ntrans, eps2, eps2_n,
-              next_state - 1, 0);
-  free(nfa2);
-  free(eps2);
+  // Initial partition: group by action signature (action_ids on all intervals)
+  // Two states with different action vectors must be in different partitions.
+  // Use a simple O(n^2) grouping.
+  for (int i = 0; i < n; i++) {
+    partition[i] = -1;
+  }
+  for (int i = 0; i < n; i++) {
+    if (partition[i] >= 0) {
+      continue;
+    }
+    partition[i] = npartitions;
+    for (int j = i + 1; j < n; j++) {
+      if (partition[j] >= 0) {
+        continue;
+      }
+      int same = 1;
+      for (int si = 0; si < nintervals; si++) {
+        if (act[i * nintervals + si] != act[j * nintervals + si]) {
+          same = 0;
+          break;
+        }
+      }
+      if (same) {
+        partition[j] = npartitions;
+      }
+    }
+    npartitions++;
+  }
 
-  int rev2_nstates = rev2_max + 1;
+  // Iterative refinement: split partitions where states differ in target partitions
+  int changed = 1;
+  while (changed) {
+    changed = 0;
+    for (int p = 0; p < npartitions; p++) {
+      // Collect states in this partition
+      int pcount = 0;
+      for (int s = 0; s < n; s++) {
+        if (partition[s] == p) {
+          pcount++;
+        }
+      }
+      if (pcount <= 1) {
+        continue;
+      }
+      // Group states by their target-partition vector
+      // Compare each pair; states matching the first state stay, others form new groups
+      int first = -1;
+      for (int s = 0; s < n; s++) {
+        if (partition[s] == p) {
+          first = s;
+          break;
+        }
+      }
+      for (int s = first + 1; s < n; s++) {
+        if (partition[s] != p) {
+          continue;
+        }
+        int differs = 0;
+        for (int si = 0; si < nintervals; si++) {
+          int32_t t1 = tgt[first * nintervals + si];
+          int32_t t2 = tgt[s * nintervals + si];
+          int32_t p1 = (t1 >= 0) ? partition[t1] : -1;
+          int32_t p2 = (t2 >= 0) ? partition[t2] : -1;
+          if (p1 != p2) {
+            differs = 1;
+            break;
+          }
+        }
+        if (differs) {
+          // Find or create a new partition for this signature
+          // Check if any already-split state from this partition has the same signature
+          int found_part = -1;
+          for (int s2 = first + 1; s2 < s; s2++) {
+            if (partition[s2] < p || partition[s2] == p) {
+              continue;
+            }
+            // s2 was split from p; check if s matches s2
+            int match = 1;
+            for (int si = 0; si < nintervals; si++) {
+              int32_t t1 = tgt[s * nintervals + si];
+              int32_t t2 = tgt[s2 * nintervals + si];
+              int32_t p1 = (t1 >= 0) ? partition[t1] : -1;
+              int32_t p2 = (t2 >= 0) ? partition[t2] : -1;
+              if (p1 != p2) {
+                match = 0;
+                break;
+              }
+            }
+            if (match) {
+              found_part = partition[s2];
+              break;
+            }
+          }
+          if (found_part >= 0) {
+            partition[s] = found_part;
+          } else {
+            partition[s] = npartitions++;
+          }
+          changed = 1;
+        }
+      }
+    }
+  }
 
-  Bitset* init2 = bitset_new();
-  bitset_add_bit(init2, (uint32_t)rev2_max); // super_start
-  _determinize(a, init2, rev2_trans, rev2_ntrans, rev2_eps, rev2_neps, rev2_nstates);
-  bitset_del(init2);
-  free(rev2_trans);
-  free(rev2_eps);
+  // Build minimized DFA
+  // Map old state -> representative (smallest state in same partition)
+  int32_t* repr = calloc((size_t)n, sizeof(int32_t));
+  int32_t* new_id = calloc((size_t)n, sizeof(int32_t));
+  for (int i = 0; i < n; i++) {
+    repr[i] = -1;
+    new_id[i] = -1;
+  }
+  int new_nstates = 0;
+  for (int s = 0; s < n; s++) {
+    if (repr[partition[s]] < 0) {
+      repr[partition[s]] = s;
+    }
+  }
+  // Assign new state ids: ensure state 0 maps to new state 0
+  int32_t start_repr = repr[partition[0]];
+  new_id[start_repr] = new_nstates++;
+  for (int p = 0; p < npartitions; p++) {
+    if (repr[p] >= 0 && new_id[repr[p]] < 0) {
+      new_id[repr[p]] = new_nstates++;
+    }
+  }
 
-  // Merge adjacent DFA transitions with same (from, to, action_id) and contiguous ranges
+  // Rebuild transitions: for each transition, remap from/to to new ids.
+  // Skip duplicate transitions (same new_from, new_to, cp range, action).
+  int new_ntrans = 0;
+  DfaTrans* new_trans = malloc((size_t)(a->dfa_ntrans > 0 ? a->dfa_ntrans : 1) * sizeof(DfaTrans));
+  for (int t = 0; t < a->dfa_ntrans; t++) {
+    int old_from = a->dfa_trans[t].from;
+    int old_to = a->dfa_trans[t].to;
+    int32_t nf = new_id[repr[partition[old_from]]];
+    int32_t nt = new_id[repr[partition[old_to]]];
+    // Only emit from the representative state
+    if (repr[partition[old_from]] != old_from) {
+      continue;
+    }
+    new_trans[new_ntrans++] = (DfaTrans){
+        .from = nf,
+        .to = nt,
+        .cp_start = a->dfa_trans[t].cp_start,
+        .cp_end = a->dfa_trans[t].cp_end,
+        .action_id = a->dfa_trans[t].action_id,
+        .line = a->dfa_trans[t].line,
+        .col = a->dfa_trans[t].col,
+    };
+  }
+
+  // Replace DFA states
+  for (int i = 0; i < a->dfa_nstates; i++) {
+    bitset_del(a->dfa_states[i].nfa_states);
+  }
+  a->dfa_nstates = new_nstates;
+  if (new_nstates > a->dfa_states_cap) {
+    a->dfa_states_cap = new_nstates;
+    a->dfa_states = realloc(a->dfa_states, (size_t)a->dfa_states_cap * sizeof(DfaState));
+  }
+  for (int i = 0; i < new_nstates; i++) {
+    a->dfa_states[i] = (DfaState){.nfa_states = bitset_new()};
+  }
+
+  // Replace DFA transitions
+  free(a->dfa_trans);
+  a->dfa_trans = new_trans;
+  a->dfa_ntrans = new_ntrans;
+  a->dfa_trans_cap = a->dfa_ntrans;
+
+  free(partition);
+  free(repr);
+  free(new_id);
+  free(tgt);
+  free(act);
+  free(splits);
+
+  // Merge adjacent transitions with same (from, to, action_id) and contiguous ranges
   for (int i = 0; i < a->dfa_ntrans; i++) {
     for (int j = i + 1; j < a->dfa_ntrans; j++) {
       if (a->dfa_trans[i].from == a->dfa_trans[j].from && a->dfa_trans[i].to == a->dfa_trans[j].to &&
           a->dfa_trans[i].action_id == a->dfa_trans[j].action_id &&
           a->dfa_trans[i].cp_end + 1 == a->dfa_trans[j].cp_start) {
         a->dfa_trans[i].cp_end = a->dfa_trans[j].cp_end;
-        // Remove j
         memmove(&a->dfa_trans[j], &a->dfa_trans[j + 1], (size_t)(a->dfa_ntrans - j - 1) * sizeof(DfaTrans));
         a->dfa_ntrans--;
         j--;
@@ -456,16 +584,6 @@ void aut_optimize(Aut* a) {
   }
 
   a->optimized = 1;
-}
-
-// --- Simple determinization for when optimize is not called ---
-
-static void _simple_determinize(Aut* a) {
-  int nstates = a->max_state + 1;
-  Bitset* init = bitset_new();
-  bitset_add_bit(init, 0);
-  _determinize(a, init, a->nfa_trans, a->nfa_ntrans, a->eps_trans, a->eps_ntrans, nstates);
-  bitset_del(init);
 }
 
 int32_t aut_dfa_nstates(Aut* a) {
@@ -520,7 +638,6 @@ void aut_gen_dfa(Aut* a, IrWriter* w, bool debug_mode) {
     }
 
     if (ntrans_from == 0) {
-      // No transitions: return {state, -2}
       char nomatch_label[32];
       snprintf(nomatch_label, sizeof(nomatch_label), "s%d_nomatch", s);
       irwriter_br(w, nomatch_label);
@@ -536,14 +653,11 @@ void aut_gen_dfa(Aut* a, IrWriter* w, bool debug_mode) {
       continue;
     }
 
-    // Set debug location from first transition
     DfaTrans* ft = &a->dfa_trans[first_trans];
     if (ft->line > 0) {
       irwriter_dbg(w, ft->line, ft->col);
     }
 
-    // Separate single-point transitions (for switch) from range transitions
-    // Per spec: "flat switch case" for single points, "if (cp >= ... && cp <= ...)" for ranges
     int has_switch = 0;
     int has_range = 0;
     for (int t = 0; t < a->dfa_ntrans; t++) {
@@ -559,10 +673,6 @@ void aut_gen_dfa(Aut* a, IrWriter* w, bool debug_mode) {
 
     char nomatch_label[32];
     snprintf(nomatch_label, sizeof(nomatch_label), "s%d_nomatch", s);
-
-    // If we have ranges, chain range checks first, then switch for single points
-    // Actually: let's put switch first (if any), then range checks for wider ranges.
-    // Both fall through to nomatch.
 
     char after_switch_label[32];
     snprintf(after_switch_label, sizeof(after_switch_label), "s%d_ranges", s);
@@ -584,7 +694,6 @@ void aut_gen_dfa(Aut* a, IrWriter* w, bool debug_mode) {
       irwriter_br(w, after_switch_label);
     }
 
-    // Range checks
     if (has_range > 0) {
       irwriter_bb(w, after_switch_label);
 
@@ -603,7 +712,6 @@ void aut_gen_dfa(Aut* a, IrWriter* w, bool debug_mode) {
         snprintf(match_label, sizeof(match_label), "s%d_t%d", s, t);
 
         char next_label[32];
-        // Find next range
         int next_range = -1;
         for (int t2 = t + 1; t2 < a->dfa_ntrans; t2++) {
           if (a->dfa_trans[t2].from == s && a->dfa_trans[t2].cp_start != a->dfa_trans[t2].cp_end) {

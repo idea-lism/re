@@ -21,7 +21,8 @@ typedef struct {
 Aut* aut_new(const char* function_name, const char* source_file_name);
 void aut_del(Aut* dfa);
 void aut_transition(Aut* dfa, TransitionDef tdef, DebugInfo di);
-void aut_epsilon(Aut* dfa, int32_t from_state, int32_t to_state, int32_t action_id);
+void aut_epsilon(Aut* dfa, int32_t from_state, int32_t to_state);
+void aut_action(Aut* dfa, int32_t state, int32_t action_id);
 void aut_optimize(Aut* dfa);
 int32_t aut_dfa_nstates(Aut* dfa);
 void aut_gen_dfa(Aut* dfa, IrWriter* writer, bool debug_mode);

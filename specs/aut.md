@@ -4,23 +4,31 @@ Automaton matching is UTF-8 based, it expects inputs codepoint by codepoint (int
 
 The building model is NFA, output is DFA.
 
+Can define actions (terminal states) on certain states -- because optimization may change state numbering or merge states, action is our stable numbering that remains the same when output.
+
 - Basic interface: `aut_new(function_name, source_file_name)`, `aut_del()`
 - `aut_transition(dfa, TransitionDef tdef, DebugInfo di)`
   - arg `tdef`: `{int32_t from_state_id, int32_t to_state_id, int32_t cp_start, int32_t cp_end_inclusive}`
     - init state: 0
     - special cp: `-1` for beginning of string, `-2` for end of string
   - arg `di`: `{int32_t source_file_line, int32_t source_file_col}`
-- `aut_epsilon(dfa, from_state, to_state, action_id)`
+- `aut_epsilon(dfa, from_state, to_state)`
   - define epsilon transition
-  - makes it emit action `action_id` after transition:
-    - different transitions can result in same action_id
-    - 0: in generated code: no trigger action
+- `aut_action(dfa, state, action_id)`
+  - marks a terminal state for emitting `action_id` when parsing
+  - this functions means just "alias ephemeral state to eternal action_id". action numbering and meaning:
     - -1: in generated code: when this happens, return invalid match, useful for defining word boundaries
-    - note that we don't need special handling for 0 or -1
+    - 0: no effect, can continue with more feeds
+    - positive values: user defined action trigger, also can continue with more feeds
+  - MIN-RULE: when defining different action_id on a same state, the minimal remains.
+  - PRESERVING-RULE: optimize / determinize should preserve same action_id for same input
 - `aut_optimize(dfa)`
-  - brzozowski
+  - (Hopcroft's) determinize then partition-refinement minimization
+  - action_ids:
+    - when merging states, merge action_ids (min-action_id-rule)
     - test should verify states are reduced
-  - utilize bitset.h / bitset.c
+    - after `aut_optimize()`, test should verify PRESERVING-RULE
+  - utilize bitset
 - `aut_gen_dfa(dfa, IRWriter writer, debug_mode)`
   - Generates function in LLVM IR
   - C calling convention
