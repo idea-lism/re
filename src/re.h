@@ -25,8 +25,8 @@ void re_range_neg(ReRange* range);
 Re* re_new(Aut* aut);
 void re_del(Re* re);
 
-void re_append_ch(Re* re, int32_t codepoint);
-void re_append_range(Re* re, ReRange* range);
+void re_append_ch(Re* re, int32_t codepoint, DebugInfo di);
+void re_append_range(Re* re, ReRange* range, DebugInfo di);
 void re_lparen(Re* re);
 void re_fork(Re* re);
 void re_rparen(Re* re);

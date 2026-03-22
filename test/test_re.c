@@ -205,7 +205,7 @@ TEST(test_range_neg_double) {
 // --- re_append_ch ---
 
 static void _build_ch(Aut* a, Re* re, IrWriter* w) {
-  re_append_ch(re, 'A');
+  re_append_ch(re, 'A', (DebugInfo){0, 0});
   re_action(re, 1);
   aut_gen_dfa(a, w, false);
 }
@@ -217,8 +217,8 @@ TEST(test_append_ch) {
 }
 
 static void _build_ch_seq(Aut* a, Re* re, IrWriter* w) {
-  re_append_ch(re, 'H');
-  re_append_ch(re, 'i');
+  re_append_ch(re, 'H', (DebugInfo){0, 0});
+  re_append_ch(re, 'i', (DebugInfo){0, 0});
   re_action(re, 1);
   aut_gen_dfa(a, w, false);
 }
@@ -235,7 +235,7 @@ TEST(test_append_ch_seq) {
 static void _build_append_range(Aut* a, Re* re, IrWriter* w) {
   ReRange* r = re_range_new();
   re_range_add(r, 'A', 'Z');
-  re_append_range(re, r);
+  re_append_range(re, r, (DebugInfo){0, 0});
   re_range_del(r);
   re_action(re, 1);
   aut_gen_dfa(a, w, false);
@@ -252,7 +252,7 @@ static void _build_append_multi_range(Aut* a, Re* re, IrWriter* w) {
   ReRange* r = re_range_new();
   re_range_add(r, 'A', 'Z');
   re_range_add(r, 'a', 'z');
-  re_append_range(re, r);
+  re_append_range(re, r, (DebugInfo){0, 0});
   re_range_del(r);
   re_action(re, 1);
   aut_gen_dfa(a, w, false);
@@ -272,10 +272,10 @@ TEST(test_append_multi_range) {
 
 static void _build_group(Aut* a, Re* re, IrWriter* w) {
   re_lparen(re);
-  re_append_ch(re, 'a');
-  re_append_ch(re, 'b');
+  re_append_ch(re, 'a', (DebugInfo){0, 0});
+  re_append_ch(re, 'b', (DebugInfo){0, 0});
   re_rparen(re);
-  re_append_ch(re, 'c');
+  re_append_ch(re, 'c', (DebugInfo){0, 0});
   re_action(re, 1);
   aut_gen_dfa(a, w, false);
 }
@@ -292,9 +292,9 @@ TEST(test_group) {
 
 static void _build_alt(Aut* a, Re* re, IrWriter* w) {
   re_lparen(re);
-  re_append_ch(re, 'a');
+  re_append_ch(re, 'a', (DebugInfo){0, 0});
   re_fork(re);
-  re_append_ch(re, 'b');
+  re_append_ch(re, 'b', (DebugInfo){0, 0});
   re_rparen(re);
   re_action(re, 1);
   aut_gen_dfa(a, w, false);
@@ -311,13 +311,13 @@ TEST(test_alt) {
 
 static void _build_complex(Aut* a, Re* re, IrWriter* w) {
   re_lparen(re);
-  re_append_ch(re, 'a');
-  re_append_ch(re, 'b');
+  re_append_ch(re, 'a', (DebugInfo){0, 0});
+  re_append_ch(re, 'b', (DebugInfo){0, 0});
   re_fork(re);
-  re_append_ch(re, 'c');
-  re_append_ch(re, 'd');
+  re_append_ch(re, 'c', (DebugInfo){0, 0});
+  re_append_ch(re, 'd', (DebugInfo){0, 0});
   re_rparen(re);
-  re_append_ch(re, 'e');
+  re_append_ch(re, 'e', (DebugInfo){0, 0});
   re_action(re, 1);
   aut_optimize(a);
   aut_gen_dfa(a, w, false);
@@ -337,7 +337,7 @@ TEST(test_complex) {
 // --- re_action ---
 
 static void _build_action(Aut* a, Re* re, IrWriter* w) {
-  re_append_ch(re, 'x');
+  re_append_ch(re, 'x', (DebugInfo){0, 0});
   re_action(re, 42);
   aut_gen_dfa(a, w, false);
 }

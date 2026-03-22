@@ -153,20 +153,19 @@ void re_del(Re* re) {
   free(re);
 }
 
-void re_append_ch(Re* re, int32_t codepoint) {
+void re_append_ch(Re* re, int32_t codepoint, DebugInfo di) {
   GroupFrame* f = _top(re);
   int32_t s = _alloc_state(re);
-  aut_transition(re->aut, (TransitionDef){f->cur_state, s, codepoint, codepoint}, (DebugInfo){0, 0});
+  aut_transition(re->aut, (TransitionDef){f->cur_state, s, codepoint, codepoint}, di);
   f->cur_state = s;
 }
 
-void re_append_range(Re* re, ReRange* range) {
+void re_append_range(Re* re, ReRange* range, DebugInfo di) {
   assert(range->len > 0);
   GroupFrame* f = _top(re);
   int32_t s = _alloc_state(re);
   for (int32_t i = 0; i < range->len; i++) {
-    aut_transition(re->aut, (TransitionDef){f->cur_state, s, range->ivs[i].start, range->ivs[i].end},
-                   (DebugInfo){0, 0});
+    aut_transition(re->aut, (TransitionDef){f->cur_state, s, range->ivs[i].start, range->ivs[i].end}, di);
   }
   f->cur_state = s;
 }
