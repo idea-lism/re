@@ -7,8 +7,6 @@
   - for download task, use Ruby's builtin open-uri to download
   - for unzip task, add unzip prereq in README.md
 
-- Implement in C, not C++.
-
 Additional verifications:
 
 - ASAN
@@ -27,3 +25,7 @@ Outputs:
 CI:
 
 - Setup github CI related files
+
+Cross-Platform compatibility
+
+- test/compat.c defines compat functions used in test

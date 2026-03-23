@@ -1,4 +1,3 @@
-#include "compat.h"
 #include "../src/ustr.h"
 #include "../src/ustr_intern.h"
 #include <stdio.h>

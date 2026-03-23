@@ -6,7 +6,7 @@ exe "test_ustr",
   deps: %w[ustr]
 
 exe "test_irwriter",
-  srcs: %w[test/test_irwriter.c src/irwriter.c]
+  srcs: %w[test/test_irwriter.c test/compat.c src/irwriter.c]
 
 exe "test_bitset",
   srcs: %w[test/test_bitset.c src/bitset.c]
@@ -16,13 +16,13 @@ exe "bench_ustr",
   deps: %w[ustr]
 
 exe "test_aut",
-  srcs: %w[test/test_aut.c src/aut.c src/irwriter.c src/bitset.c]
+  srcs: %w[test/test_aut.c test/compat.c src/aut.c src/irwriter.c src/bitset.c]
 
 exe "test_re",
-  srcs: %w[test/test_re.c src/re.c src/aut.c src/irwriter.c src/bitset.c]
+  srcs: %w[test/test_re.c test/compat.c src/re.c src/aut.c src/irwriter.c src/bitset.c]
 
 exe "test_lex",
-  srcs: %w[test/test_lex.c src/lex.c src/re.c src/aut.c src/irwriter.c src/bitset.c],
+  srcs: %w[test/test_lex.c test/compat.c src/lex.c src/re.c src/aut.c src/irwriter.c src/bitset.c],
   deps: %w[ustr]
 
 combined_lib "re",
