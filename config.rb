@@ -32,6 +32,10 @@ def dist_header(src, to:)
   $dist_headers << { src: src, to: to }
 end
 
+def exports_file(path)
+  $exports_file = path
+end
+
 def debug(cflags:)
   $mode_cflags["debug"] = cflags
 end
@@ -49,7 +53,8 @@ AR = ENV["AR"] || "ar"
 CLANG_FORMAT = RUBY_PLATFORM =~ /darwin/ ? "xcrun clang-format" : "clang-format"
 
 ARCH_CFLAGS = RUBY_PLATFORM =~ /x86_64|amd64/ ? "-mavx2" : ""
-BASE_CFLAGS = "-std=c23 -Wall -Wextra -Werror #{ARCH_CFLAGS}".strip
+# iso C doesn't include a lot of posix functions in std lib, define the _POSIX_C_SOURCE macro to ensure inclusion
+BASE_CFLAGS = "-std=c23 -D_POSIX_C_SOURCE=200809L -Wall -Wextra -Werror -fvisibility=hidden #{ARCH_CFLAGS}".strip
 EXTRA_CFLAGS = $mode_cflags.fetch(MODE, "")
 CFLAGS = "#{BASE_CFLAGS} #{EXTRA_CFLAGS}".strip
 
@@ -109,6 +114,11 @@ File.open("build.ninja", "w") do |f|
   f.puts "  description = AR $out"
   f.puts ""
 
+  f.puts "rule localize"
+  f.puts "  command = cp $in $out && nmedit -s $exports $out"
+  f.puts "  description = LOCALIZE $out"
+  f.puts ""
+
   link_flags = EXTRA_CFLAGS.include?("sanitize") ? EXTRA_CFLAGS : ""
   f.puts "rule link"
   f.puts "  command = #{CC} #{link_flags} $in -o $out"
@@ -163,7 +173,14 @@ File.open("build.ninja", "w") do |f|
       obj
     end
     out = "out/lib#{cl[:name]}.a"
-    f.puts "build #{out}: ar #{all_objs.join(' ')}"
+    raw_out = "#{BUILDDIR}/lib#{cl[:name]}_raw.a"
+    f.puts "build #{raw_out}: ar #{all_objs.join(' ')}"
+    if $exports_file
+      f.puts "build #{out}: localize #{raw_out}"
+      f.puts "  exports = #{$exports_file}"
+    else
+      f.puts "build #{out}: ar #{all_objs.join(' ')}"
+    end
     f.puts ""
   end
 

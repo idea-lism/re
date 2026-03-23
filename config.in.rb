@@ -32,6 +32,8 @@ exe "ulex",
 combined_lib "re",
   srcs: %w[src/ustr.c src/ustr_neon.c src/ustr_avx.c src/irwriter.c src/bitset.c src/aut.c src/re.c src/lex.c]
 
+exports_file "out/libre.exports"
+
 amalgamate input: "src/re_rt.h.in",
   output: "out/re_rt.h",
   include_dirs: %w[src]
