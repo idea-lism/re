@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+      - name: Install ninja
+        run: brew install ninja
+      - name: Build (debug)
+        run: ruby config.rb debug && ninja
+      - name: Test
+        run: |
+          for t in build/debug/test_*; do
+            [ -x "$t" ] || continue
+            echo "--- $t ---"
+            "$t"
+          done
+
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+      - name: Install deps
+        run: |
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 18
+          sudo apt-get install -y ninja-build
+      - name: Build (debug)
+        run: CC=clang-18 ruby config.rb debug && ninja
+        env:
+          CC: clang-18
+      - name: Test
+        run: |
+          export LLVM_CC=clang-18
+          for t in build/debug/test_*; do
+            [ -x "$t" ] || continue
+            echo "--- $t ---"
+            "$t"
+          done
+
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: CLANG64
+          install: >-
+            mingw-w64-clang-x86_64-clang
+            mingw-w64-clang-x86_64-ninja
+          update: true
+      - name: Install Ruby
+        run: pacman -S --noconfirm ruby
+      - name: Build (debug)
+        run: CC=clang ruby config.rb debug && ninja
+        env:
+          CC: clang
+      - name: Test
+        run: |
+          export LLVM_CC=clang
+          for t in build/debug/test_*; do
+            [ -x "$t" ] || continue
+            echo "--- $t ---"
+            "$t"
+          done

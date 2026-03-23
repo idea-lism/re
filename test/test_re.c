@@ -1,4 +1,5 @@
 #include "../src/re.h"
+#include "compat.h"
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -17,7 +18,7 @@
 static char* _gen_ir(void (*fn)(Aut*, Re*, IrWriter*)) {
   char* buf = NULL;
   size_t sz = 0;
-  FILE* f = open_memstream(&buf, &sz);
+  FILE* f = compat_open_memstream(&buf, &sz);
   assert(f);
   IrWriter* w = irwriter_new(f, TARGET);
   irwriter_start(w, "test.rules", ".");
@@ -30,7 +31,7 @@ static char* _gen_ir(void (*fn)(Aut*, Re*, IrWriter*)) {
 
   irwriter_end(w);
   irwriter_del(w);
-  fclose(f);
+  compat_close_memstream(f, &buf, &sz);
   return buf;
 }
 
@@ -325,7 +326,7 @@ static void _build_complex(Aut* a, Re* re, IrWriter* w) {
 
 TEST(test_complex) {
   char* out = _gen_ir(_build_complex);
-  assert(strstr(out, "define {i32, i32} @match"));
+  assert(strstr(out, "define {i64, i64} @match"));
   assert(strstr(out, "i32 97"));  // a
   assert(strstr(out, "i32 98"));  // b
   assert(strstr(out, "i32 99"));  // c
@@ -371,7 +372,7 @@ static void _write_and_compile(void (*fn)(Aut*, Re*, IrWriter*), const char* tes
   fclose(f);
 
   char cmd[256];
-  snprintf(cmd, sizeof(cmd), "xcrun clang -c %s -o %s 2>&1", ll_path, obj_path);
+  snprintf(cmd, sizeof(cmd), "%s -c %s -o %s 2>&1", compat_llvm_cc(), ll_path, obj_path);
   FILE* p = popen(cmd, "r");
   assert(p);
   char output[4096] = {0};

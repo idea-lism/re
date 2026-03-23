@@ -15,9 +15,9 @@ Additional verifications:
 Outputs:
 
 - out/libre.a : includes everything
-- out/re_rt.h : amalgamated single-source for running lexer / regexp
-  - includes `ustr` and `bitset`
-  - download amalgamate tool to merge includes
+- out/re_rt.h : amalgamated single-header for running lexer / regexp
+  - merges `ustr.c` and `bitset.c`, wrap in macro `RE_RT_IMPLEMENTATION`
+  - download amalgamate tool to merge includes and impls
     - windows: https://github.com/rindeal/Amalgamate/releases/download/v0.99.0/amalgamate-v0.99.0-windows-amd64.zip
     - macos: https://github.com/rindeal/Amalgamate/releases/download/v0.99.0/amalgamate-v0.99.0-darwin-arm64.zip
     - linux: https://github.com/rindeal/Amalgamate/releases/download/v0.99.0/amalgamate-v0.99.0-linux-amd64.zip

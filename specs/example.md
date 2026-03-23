@@ -1,4 +1,6 @@
-An example show casing the capability and debuggability
+An example show casing the capability and debuggability.
+
+It is just for show casing, should be super simple, should be workable with pre-compiled distribution.
 
 - `example/drive.c`: use the lex api to create LLVM IR `lex.ll`
   - syntax: a simple language with keywords (`if`, `else`, `while`),
@@ -10,5 +12,6 @@ An example show casing the capability and debuggability
   - use `src/ustr.h`'s interface to iterate source char by char
   - use generated `lex.ll` to lex string
 - `example/build.sh`: to build example
+  - for simplicity just cd to this folder to build, and outputs in this folder too
   - use `$CC` or just fallback to `clang`
-
+  - can put int some custom flags

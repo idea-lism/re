@@ -1,2 +1,6 @@
 build
 build.ninja
+out
+lex.o
+lex_wrap.o
+*.dSYM

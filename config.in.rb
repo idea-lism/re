@@ -44,5 +44,14 @@ exe "test_lex",
   srcs: %w[test/test_lex.c],
   deps: %w[lex re aut irwriter bitset ustr]
 
+combined_lib "re",
+  deps: %w[ustr irwriter bitset aut re lex]
+
+amalgamate input: "src/re_rt.h.in",
+  output: "out/re_rt.h",
+  include_dirs: %w[src]
+
+dist_header "src/lex.h", to: "out/lex.h"
+
 debug   cflags: "-O0 -g -fsanitize=address -fsanitize=undefined"
 release cflags: "-O2"

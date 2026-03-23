@@ -1,4 +1,5 @@
 #include "../src/irwriter.h"
+#include "compat.h"
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -15,34 +16,34 @@
 #define TARGET "arm64-apple-macosx14.0.0"
 
 // Helper: _capture irwriter output into a malloc'd string
-static char *_capture(void (*fn)(IrWriter *)) {
-  char *buf = NULL;
+static char* _capture(void (*fn)(IrWriter*)) {
+  char* buf = NULL;
   size_t sz = 0;
-  FILE *f = open_memstream(&buf, &sz);
+  FILE* f = compat_open_memstream(&buf, &sz);
   assert(f);
-  IrWriter *w = irwriter_new(f, TARGET);
+  IrWriter* w = irwriter_new(f, TARGET);
   fn(w);
   irwriter_del(w);
-  fclose(f);
+  compat_close_memstream(f, &buf, &sz);
   return buf;
 }
 
 // --- Tests ---
 
-static void _emit_module_prelude(IrWriter *w) { irwriter_start(w, "test.ll", "."); }
+static void _emit_module_prelude(IrWriter* w) { irwriter_start(w, "test.ll", "."); }
 
 TEST(test_module_prelude) {
-  char *out = _capture(_emit_module_prelude);
+  char* out = _capture(_emit_module_prelude);
   assert(strstr(out, "source_filename = \"test.ll\""));
   assert(strstr(out, "target triple = \"arm64-apple-macosx14.0.0\""));
   free(out);
 }
 
-static void _emit_simple_function(IrWriter *w) {
+static void _emit_simple_function(IrWriter* w) {
   irwriter_start(w, "test.ll", ".");
 
-  const char *arg_types[] = {"i32", "i32"};
-  const char *arg_names[] = {"state", "cp"};
+  const char* arg_types[] = {"i32", "i32"};
+  const char* arg_names[] = {"state", "cp"};
   irwriter_define_start(w, "match", "{i32, i32}", 2, arg_types, arg_names);
 
   irwriter_bb(w, "entry");
@@ -53,18 +54,20 @@ static void _emit_simple_function(IrWriter *w) {
 }
 
 TEST(test_simple_function) {
-  char *out = _capture(_emit_simple_function);
-  assert(strstr(out, "define {i32, i32} @match(i32 %state, i32 %cp)"));
+  char* out = _capture(_emit_simple_function);
+  assert(strstr(out, "define {i64, i64} @match(i64 %state_i64, i64 %cp_i64)"));
+  assert(strstr(out, "%state = trunc i64 %state_i64 to i32"));
+  assert(strstr(out, "%cp = trunc i64 %cp_i64 to i32"));
   assert(strstr(out, "entry:"));
-  assert(strstr(out, "ret {i32, i32} undef"));
+  assert(strstr(out, "ret {i64, i64}"));
   assert(strstr(out, "}"));
   free(out);
 }
 
-static void _emit_binop(IrWriter *w) {
+static void _emit_binop(IrWriter* w) {
   irwriter_start(w, "test.ll", ".");
-  const char *arg_types[] = {"i32"};
-  const char *arg_names[] = {"x"};
+  const char* arg_types[] = {"i32"};
+  const char* arg_names[] = {"x"};
   irwriter_define_start(w, "f", "i32", 1, arg_types, arg_names);
   irwriter_bb(w, "entry");
 
@@ -82,17 +85,17 @@ static void _emit_binop(IrWriter *w) {
 }
 
 TEST(test_binop) {
-  char *out = _capture(_emit_binop);
+  char* out = _capture(_emit_binop);
   assert(strstr(out, "%r0 = add i32 %x, 1"));
   assert(strstr(out, "%r1 = mul i32 %x, %r0"));
   assert(strstr(out, "ret i32 %r1"));
   free(out);
 }
 
-static void _emit_icmp_branch(IrWriter *w) {
+static void _emit_icmp_branch(IrWriter* w) {
   irwriter_start(w, "test.ll", ".");
-  const char *arg_types[] = {"i32"};
-  const char *arg_names[] = {"x"};
+  const char* arg_types[] = {"i32"};
+  const char* arg_names[] = {"x"};
   irwriter_define_start(w, "f", "i32", 1, arg_types, arg_names);
 
   irwriter_bb(w, "entry");
@@ -114,7 +117,7 @@ static void _emit_icmp_branch(IrWriter *w) {
 }
 
 TEST(test_icmp_branch) {
-  char *out = _capture(_emit_icmp_branch);
+  char* out = _capture(_emit_icmp_branch);
   assert(strstr(out, "%r0 = icmp sge i32 %x, 0"));
   assert(strstr(out, "br i1 %r0, label %positive, label %negative"));
   assert(strstr(out, "positive:"));
@@ -122,10 +125,10 @@ TEST(test_icmp_branch) {
   free(out);
 }
 
-static void _emit_switch(IrWriter *w) {
+static void _emit_switch(IrWriter* w) {
   irwriter_start(w, "test.ll", ".");
-  const char *arg_types[] = {"i32"};
-  const char *arg_names[] = {"s"};
+  const char* arg_types[] = {"i32"};
+  const char* arg_names[] = {"s"};
   irwriter_define_start(w, "dispatch", "void", 1, arg_types, arg_names);
 
   irwriter_bb(w, "entry");
@@ -151,7 +154,7 @@ static void _emit_switch(IrWriter *w) {
 }
 
 TEST(test_switch) {
-  char *out = _capture(_emit_switch);
+  char* out = _capture(_emit_switch);
   assert(strstr(out, "switch i32 %s, label %dead ["));
   assert(strstr(out, "i32 0, label %state0"));
   assert(strstr(out, "i32 1, label %state1"));
@@ -159,10 +162,10 @@ TEST(test_switch) {
   free(out);
 }
 
-static void _emit_insertvalue(IrWriter *w) {
+static void _emit_insertvalue(IrWriter* w) {
   irwriter_start(w, "test.ll", ".");
-  const char *arg_types[] = {"i32", "i32"};
-  const char *arg_names[] = {"state", "cp"};
+  const char* arg_types[] = {"i32", "i32"};
+  const char* arg_names[] = {"state", "cp"};
   irwriter_define_start(w, "match", "{i32, i32}", 2, arg_types, arg_names);
 
   irwriter_bb(w, "entry");
@@ -177,17 +180,17 @@ static void _emit_insertvalue(IrWriter *w) {
 }
 
 TEST(test_insertvalue) {
-  char *out = _capture(_emit_insertvalue);
+  char* out = _capture(_emit_insertvalue);
   assert(strstr(out, "%r0 = insertvalue {i32, i32} undef, i32 1, 0"));
   assert(strstr(out, "%r1 = insertvalue {i32, i32} %r0, i32 0, 1"));
-  assert(strstr(out, "ret {i32, i32} %r1"));
+  assert(strstr(out, "ret {i64, i64}"));
   free(out);
 }
 
-static void _emit_debug_locations(IrWriter *w) {
+static void _emit_debug_locations(IrWriter* w) {
   irwriter_start(w, "test.ll", ".");
-  const char *arg_types[] = {"i32"};
-  const char *arg_names[] = {"x"};
+  const char* arg_types[] = {"i32"};
+  const char* arg_names[] = {"x"};
   irwriter_define_start(w, "f", "i32", 1, arg_types, arg_names);
 
   irwriter_bb(w, "entry");
@@ -202,7 +205,7 @@ static void _emit_debug_locations(IrWriter *w) {
 }
 
 TEST(test_debug_locations) {
-  char *out = _capture(_emit_debug_locations);
+  char* out = _capture(_emit_debug_locations);
   // Instructions should have !dbg references
   assert(strstr(out, "!dbg !"));
   // Metadata should contain DILocation
@@ -217,11 +220,11 @@ TEST(test_debug_locations) {
 }
 
 // Full DFA-style function: mimics what aut_gen_dfa would produce
-static void _emit_dfa_function(IrWriter *w) {
+static void _emit_dfa_function(IrWriter* w) {
   irwriter_start(w, "dfa.rules", ".");
 
-  const char *arg_types[] = {"i32", "i32"};
-  const char *arg_names[] = {"state", "cp"};
+  const char* arg_types[] = {"i32", "i32"};
+  const char* arg_names[] = {"state", "cp"};
   irwriter_define_start(w, "match", "{i32, i32}", 2, arg_types, arg_names);
 
   // entry: switch on state
@@ -274,16 +277,16 @@ static void _emit_dfa_function(IrWriter *w) {
 }
 
 TEST(test_dfa_function) {
-  char *out = _capture(_emit_dfa_function);
+  char* out = _capture(_emit_dfa_function);
   // Structural checks
-  assert(strstr(out, "define {i32, i32} @match(i32 %state, i32 %cp)"));
+  assert(strstr(out, "define {i64, i64} @match(i64 %state_i64, i64 %cp_i64)"));
   assert(strstr(out, "switch i32 %state, label %dead"));
   assert(strstr(out, "state0:"));
   assert(strstr(out, "s0_match:"));
   assert(strstr(out, "s0_fail:"));
   assert(strstr(out, "dead:"));
   assert(strstr(out, "insertvalue {i32, i32}"));
-  assert(strstr(out, "ret {i32, i32}"));
+  assert(strstr(out, "ret {i64, i64}"));
   // Debug
   assert(strstr(out, "DISubprogram(name: \"match\""));
   assert(strstr(out, "DILocation"));
@@ -291,14 +294,14 @@ TEST(test_dfa_function) {
 }
 
 TEST(test_lifecycle) {
-  FILE *f = fopen("/dev/null", "w");
+  FILE* f = fopen("/dev/null", "w");
   assert(f);
-  IrWriter *w = irwriter_new(f, TARGET);
+  IrWriter* w = irwriter_new(f, TARGET);
   assert(w);
 
   irwriter_start(w, "test.ll", ".");
-  const char *arg_types[] = {"i32"};
-  const char *arg_names[] = {"x"};
+  const char* arg_types[] = {"i32"};
+  const char* arg_names[] = {"x"};
   irwriter_define_start(w, "f", "i32", 1, arg_types, arg_names);
   irwriter_bb(w, "entry");
   irwriter_ret(w, "i32", "%x");
@@ -310,16 +313,16 @@ TEST(test_lifecycle) {
 }
 
 TEST(test_clang_compile) {
-  const char *ll_path = "/tmp/test_irwriter.ll";
-  const char *obj_path = "/tmp/test_irwriter.o";
-  FILE *f = fopen(ll_path, "w");
+  const char* ll_path = "/tmp/test_irwriter.ll";
+  const char* obj_path = "/tmp/test_irwriter.o";
+  FILE* f = fopen(ll_path, "w");
   assert(f);
-  IrWriter *w = irwriter_new(f, TARGET);
+  IrWriter* w = irwriter_new(f, TARGET);
 
   irwriter_start(w, "dfa.rules", ".");
 
-  const char *arg_types[] = {"i32", "i32"};
-  const char *arg_names[] = {"state", "cp"};
+  const char* arg_types[] = {"i32", "i32"};
+  const char* arg_names[] = {"state", "cp"};
   irwriter_define_start(w, "match", "{i32, i32}", 2, arg_types, arg_names);
 
   irwriter_bb(w, "entry");
@@ -368,8 +371,8 @@ TEST(test_clang_compile) {
   fclose(f);
 
   char cmd[256];
-  snprintf(cmd, sizeof(cmd), "xcrun clang -c %s -o %s 2>&1", ll_path, obj_path);
-  FILE *p = popen(cmd, "r");
+  snprintf(cmd, sizeof(cmd), "%s -c %s -o %s 2>&1", compat_llvm_cc(), ll_path, obj_path);
+  FILE* p = popen(cmd, "r");
   assert(p);
   char output[4096] = {0};
   size_t n = fread(output, 1, sizeof(output) - 1, p);
@@ -378,7 +381,7 @@ TEST(test_clang_compile) {
   if (status != 0) {
     fprintf(stderr, "\nclang failed:\n%s\n", output);
     // dump the .ll for debugging
-    FILE *ll = fopen(ll_path, "r");
+    FILE* ll = fopen(ll_path, "r");
     if (ll) {
       char line[512];
       while (fgets(line, sizeof(line), ll)) {

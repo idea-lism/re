@@ -1,4 +1,5 @@
 #include "../src/lex.h"
+#include "compat.h"
 #include <assert.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -18,13 +19,13 @@
 static char* _gen(void (*fn)(Lex*)) {
   char* buf = NULL;
   size_t sz = 0;
-  FILE* f = open_memstream(&buf, &sz);
+  FILE* f = compat_open_memstream(&buf, &sz);
   assert(f);
   Lex* l = lex_new("test.rules");
   fn(l);
   lex_gen(l, f, TARGET);
   lex_del(l);
-  fclose(f);
+  compat_close_memstream(f, &buf, &sz);
   return buf;
 }
 
@@ -313,7 +314,7 @@ static void _build_multi(Lex* l) {
 
 TEST(test_multi) {
   char* out = _gen(_build_multi);
-  assert(strstr(out, "define {i32, i32} @lex"));
+  assert(strstr(out, "define {i64, i64} @lex"));
   free(out);
 }
 
@@ -341,7 +342,7 @@ static void _build_ident(Lex* l) { lex_add(l, "", "[a-zA-Z_][a-zA-Z0-9_]*", 0); 
 
 TEST(test_ident) {
   char* out = _gen(_build_ident);
-  assert(strstr(out, "define {i32, i32} @lex"));
+  assert(strstr(out, "define {i64, i64} @lex"));
   free(out);
 }
 
@@ -373,7 +374,7 @@ static void _write_and_compile(void (*fn)(Lex*), const char* test_name) {
   fclose(f);
 
   char cmd[256];
-  snprintf(cmd, sizeof(cmd), "xcrun clang -c %s -o %s 2>&1", ll_path, obj_path);
+  snprintf(cmd, sizeof(cmd), "%s -c %s -o %s 2>&1", compat_llvm_cc(), ll_path, obj_path);
   FILE* p = popen(cmd, "r");
   assert(p);
   char output[4096] = {0};
