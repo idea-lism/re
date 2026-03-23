@@ -1,4 +1,3 @@
 *.o
-drive
 main
 lex.ll

@@ -25,6 +25,10 @@ exe "test_lex",
   srcs: %w[test/test_lex.c test/compat.c src/lex.c src/re.c src/aut.c src/irwriter.c src/bitset.c],
   deps: %w[ustr]
 
+exe "ulex",
+  srcs: %w[src/ulex.c src/lex.c src/re.c src/aut.c src/irwriter.c src/bitset.c],
+  deps: %w[ustr]
+
 combined_lib "re",
   srcs: %w[src/ustr.c src/ustr_neon.c src/ustr_avx.c src/irwriter.c src/bitset.c src/aut.c src/re.c src/lex.c]
 

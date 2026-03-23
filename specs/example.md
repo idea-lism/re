@@ -15,3 +15,9 @@ It is just for show casing, should be super simple, should be workable with pre-
   - for simplicity just cd to this folder to build, and outputs in this folder too
   - use `$CC` or just fallback to `clang`
   - can put int some custom flags
+
+Lookahead-1 behavior
+
+- as we feed characters to lexer, an action_id is emit, lexing shall:
+  - keep previous emit action_id
+  - when emits invalid action_id or all input is consumed, and previous action_id is positive, emit previous action_id an char position

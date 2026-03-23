@@ -34,7 +34,14 @@ int compat_pclose(FILE* f) { return _pclose(f); }
 #include <stdio.h>
 #include <stdlib.h>
 
-// feature test macros from https://man7.org/linux/man-pages/man3/popen.3.html
+// feature test macros from man
+
+// https://man7.org/linux/man-pages/man3/open_memstream.3.html
+#if !(_POSIX_C_SOURCE >= 200809L)
+FILE *open_memstream(char **ptr, size_t *sizeloc);
+#endif
+
+// https://man7.org/linux/man-pages/man3/popen.3.html
 #if !(_POSIX_C_SOURCE >= 2 || /* glibc <= 2.19: */ _BSD_SOURCE || _SVID_SOURCE)
 FILE *popen(const char *command, const char *type);
 int pclose(FILE *stream);

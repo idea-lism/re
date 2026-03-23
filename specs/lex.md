@@ -1,7 +1,10 @@
 build lexer on top of re API
 
-- basic api: `lex_new(source_file_name)` and `lex_del()`
-- parse regexp and add branch: `lex_add(l, mode, "[0-9a-z]+", source_file_offset)`
+- basic api: `lex_new(source_file_name, mode)` and `lex_del()`
+  - `mode` is combination of following chars or just empty string "":
+    - "i": ignore case
+    - "b": binary mode (by default it is UTF-8 mode, must use src/ustr.h to init the UTF-8 string and do the parse)
+- parse regexp and add branch: `lex_add(l, "[0-9a-z]+", source_file_offset)`
   - a recursive descend parser, handles following syntax and translate to regexp constructs (see src/re.h):
     - boundaries: `\a` for beginning of input, `\z` for end of input
     - char class: `[0-9a-z]`, negative char class like: `[^a-z]`
@@ -12,9 +15,7 @@ build lexer on top of re API
     - branching: `foo|bar`
     - grouping: `(some_group)`
     - multi qualifiers: `e?`, `e+`, `e*`
-  - `mode` is combination of following chars or just empty string "":
-    - "i": ignore case
-    - "b": binary mode (by default it is UTF-8 mode, must use src/ustr.h to init the UTF-8 string and do the parse)
+    - no word boundaries -- it requires lookahead-2 mode DFA
   - when parsing failed, `lex_add()` returns negative error code:
     - paren not match
     - char group not closed

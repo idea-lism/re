@@ -16,12 +16,12 @@
 
 #define TARGET "arm64-apple-macosx14.0.0"
 
-static char* _gen(void (*fn)(Lex*)) {
+static char* _gen_mode(void (*fn)(Lex*), const char* mode) {
   char* buf = NULL;
   size_t sz = 0;
   FILE* f = compat_open_memstream(&buf, &sz);
   assert(f);
-  Lex* l = lex_new("test.rules");
+  Lex* l = lex_new("test.rules", mode);
   fn(l);
   lex_gen(l, f, TARGET);
   lex_del(l);
@@ -29,10 +29,12 @@ static char* _gen(void (*fn)(Lex*)) {
   return buf;
 }
 
+static char* _gen(void (*fn)(Lex*)) { return _gen_mode(fn, ""); }
+
 // --- Lifecycle ---
 
 TEST(test_lifecycle) {
-  Lex* l = lex_new("test.rules");
+  Lex* l = lex_new("test.rules", "");
   assert(l);
   lex_del(l);
 }
@@ -40,10 +42,10 @@ TEST(test_lifecycle) {
 // --- Action IDs ---
 
 TEST(test_action_ids) {
-  Lex* l = lex_new("test.rules");
-  int32_t a1 = lex_add(l, "", "abc", 0);
-  int32_t a2 = lex_add(l, "", "xyz", 0);
-  int32_t a3 = lex_add(l, "", "123", 0);
+  Lex* l = lex_new("test.rules", "");
+  int32_t a1 = lex_add(l, "abc", 0);
+  int32_t a2 = lex_add(l, "xyz", 0);
+  int32_t a3 = lex_add(l, "123", 0);
   assert(a1 == 1);
   assert(a2 == 2);
   assert(a3 == 3);
@@ -52,7 +54,7 @@ TEST(test_action_ids) {
 
 // --- Simple literal ---
 
-static void _build_literal(Lex* l) { lex_add(l, "", "Hi", 0); }
+static void _build_literal(Lex* l) { lex_add(l, "Hi", 0); }
 
 TEST(test_literal) {
   char* out = _gen(_build_literal);
@@ -63,7 +65,7 @@ TEST(test_literal) {
 
 // --- Char class ---
 
-static void _build_charclass(Lex* l) { lex_add(l, "", "[a-z]", 0); }
+static void _build_charclass(Lex* l) { lex_add(l, "[a-z]", 0); }
 
 TEST(test_charclass) {
   char* out = _gen(_build_charclass);
@@ -74,7 +76,7 @@ TEST(test_charclass) {
 
 // --- Negative char class ---
 
-static void _build_neg_charclass(Lex* l) { lex_add(l, "", "[^a]", 0); }
+static void _build_neg_charclass(Lex* l) { lex_add(l, "[^a]", 0); }
 
 TEST(test_neg_charclass) {
   char* out = _gen(_build_neg_charclass);
@@ -86,7 +88,7 @@ TEST(test_neg_charclass) {
 
 // --- C-escapes ---
 
-static void _build_c_escape(Lex* l) { lex_add(l, "", "\\n\\t", 0); }
+static void _build_c_escape(Lex* l) { lex_add(l, "\\n\\t", 0); }
 
 TEST(test_c_escape) {
   char* out = _gen(_build_c_escape);
@@ -97,7 +99,7 @@ TEST(test_c_escape) {
 
 // --- Unicode escape ---
 
-static void _build_unicode_escape(Lex* l) { lex_add(l, "", "\\u{41}", 0); }
+static void _build_unicode_escape(Lex* l) { lex_add(l, "\\u{41}", 0); }
 
 TEST(test_unicode_escape) {
   char* out = _gen(_build_unicode_escape);
@@ -107,7 +109,7 @@ TEST(test_unicode_escape) {
 
 // --- Char escape in class ---
 
-static void _build_escape_in_class(Lex* l) { lex_add(l, "", "[\\-]", 0); }
+static void _build_escape_in_class(Lex* l) { lex_add(l, "[\\-]", 0); }
 
 TEST(test_escape_in_class) {
   char* out = _gen(_build_escape_in_class);
@@ -117,7 +119,7 @@ TEST(test_escape_in_class) {
 
 // --- Special class \d ---
 
-static void _build_digit(Lex* l) { lex_add(l, "", "\\d", 0); }
+static void _build_digit(Lex* l) { lex_add(l, "\\d", 0); }
 
 TEST(test_digit_class) {
   char* out = _gen(_build_digit);
@@ -128,7 +130,7 @@ TEST(test_digit_class) {
 
 // --- Special class \w ---
 
-static void _build_word(Lex* l) { lex_add(l, "", "\\w", 0); }
+static void _build_word(Lex* l) { lex_add(l, "\\w", 0); }
 
 TEST(test_word_class) {
   char* out = _gen(_build_word);
@@ -144,7 +146,7 @@ TEST(test_word_class) {
 
 // --- Special class \s ---
 
-static void _build_space(Lex* l) { lex_add(l, "", "\\s", 0); }
+static void _build_space(Lex* l) { lex_add(l, "\\s", 0); }
 
 TEST(test_space_class) {
   char* out = _gen(_build_space);
@@ -156,7 +158,7 @@ TEST(test_space_class) {
 
 // --- Special class \h ---
 
-static void _build_hex(Lex* l) { lex_add(l, "", "\\h", 0); }
+static void _build_hex(Lex* l) { lex_add(l, "\\h", 0); }
 
 TEST(test_hex_class) {
   char* out = _gen(_build_hex);
@@ -171,7 +173,7 @@ TEST(test_hex_class) {
 
 // --- Dot ---
 
-static void _build_dot(Lex* l) { lex_add(l, "", ".", 0); }
+static void _build_dot(Lex* l) { lex_add(l, ".", 0); }
 
 TEST(test_dot) {
   char* out = _gen(_build_dot);
@@ -183,7 +185,7 @@ TEST(test_dot) {
 
 // --- Boundaries ---
 
-static void _build_bof(Lex* l) { lex_add(l, "", "\\afoo", 0); }
+static void _build_bof(Lex* l) { lex_add(l, "\\afoo", 0); }
 
 TEST(test_bof) {
   char* out = _gen(_build_bof);
@@ -191,7 +193,7 @@ TEST(test_bof) {
   free(out);
 }
 
-static void _build_eof(Lex* l) { lex_add(l, "", "foo\\z", 0); }
+static void _build_eof(Lex* l) { lex_add(l, "foo\\z", 0); }
 
 TEST(test_eof) {
   char* out = _gen(_build_eof);
@@ -201,7 +203,7 @@ TEST(test_eof) {
 
 // --- Alternation ---
 
-static void _build_alt(Lex* l) { lex_add(l, "", "a|b", 0); }
+static void _build_alt(Lex* l) { lex_add(l, "a|b", 0); }
 
 TEST(test_alt) {
   char* out = _gen(_build_alt);
@@ -212,7 +214,7 @@ TEST(test_alt) {
 
 // --- Grouping ---
 
-static void _build_group(Lex* l) { lex_add(l, "", "(ab|cd)e", 0); }
+static void _build_group(Lex* l) { lex_add(l, "(ab|cd)e", 0); }
 
 TEST(test_group) {
   char* out = _gen(_build_group);
@@ -226,7 +228,7 @@ TEST(test_group) {
 
 // --- Quantifier ? ---
 
-static void _build_optional(Lex* l) { lex_add(l, "", "ab?c", 0); }
+static void _build_optional(Lex* l) { lex_add(l, "ab?c", 0); }
 
 TEST(test_optional) {
   char* out = _gen(_build_optional);
@@ -239,7 +241,7 @@ TEST(test_optional) {
 
 // --- Quantifier + ---
 
-static void _build_plus(Lex* l) { lex_add(l, "", "a+", 0); }
+static void _build_plus(Lex* l) { lex_add(l, "a+", 0); }
 
 TEST(test_plus) {
   char* out = _gen(_build_plus);
@@ -249,7 +251,7 @@ TEST(test_plus) {
 
 // --- Quantifier * ---
 
-static void _build_star(Lex* l) { lex_add(l, "", "a*b", 0); }
+static void _build_star(Lex* l) { lex_add(l, "a*b", 0); }
 
 TEST(test_star) {
   char* out = _gen(_build_star);
@@ -260,10 +262,10 @@ TEST(test_star) {
 
 // --- Ignore case ---
 
-static void _build_icase(Lex* l) { lex_add(l, "i", "abc", 0); }
+static void _build_icase(Lex* l) { lex_add(l, "abc", 0); }
 
 TEST(test_icase) {
-  char* out = _gen(_build_icase);
+  char* out = _gen_mode(_build_icase, "i");
   // Each letter should match both cases
   assert(strstr(out, "i32 65") || strstr(out, "i32 %cp, 65")); // A
   assert(strstr(out, "i32 97") || strstr(out, "i32 %cp, 97")); // a
@@ -272,10 +274,10 @@ TEST(test_icase) {
 
 // --- Ignore case in char class ---
 
-static void _build_icase_class(Lex* l) { lex_add(l, "i", "[a-c]", 0); }
+static void _build_icase_class(Lex* l) { lex_add(l, "[a-c]", 0); }
 
 TEST(test_icase_class) {
-  char* out = _gen(_build_icase_class);
+  char* out = _gen_mode(_build_icase_class, "i");
   // Should have both a-c and A-C
   assert(strstr(out, "i32 %cp, 65") || strstr(out, "i32 65")); // A
   assert(strstr(out, "i32 %cp, 97") || strstr(out, "i32 97")); // a
@@ -284,10 +286,10 @@ TEST(test_icase_class) {
 
 // --- Binary mode ---
 
-static void _build_binary(Lex* l) { lex_add(l, "b", "AB", 0); }
+static void _build_binary(Lex* l) { lex_add(l, "AB", 0); }
 
 TEST(test_binary) {
-  char* out = _gen(_build_binary);
+  char* out = _gen_mode(_build_binary, "b");
   assert(strstr(out, "i32 65")); // A
   assert(strstr(out, "i32 66")); // B
   free(out);
@@ -295,10 +297,10 @@ TEST(test_binary) {
 
 // --- Binary mode dot ---
 
-static void _build_binary_dot(Lex* l) { lex_add(l, "b", ".", 0); }
+static void _build_binary_dot(Lex* l) { lex_add(l, ".", 0); }
 
 TEST(test_binary_dot) {
-  char* out = _gen(_build_binary_dot);
+  char* out = _gen_mode(_build_binary_dot, "b");
   // dot in binary matches [0..9, 11..255]
   assert(strstr(out, "i32 %cp, 255"));
   free(out);
@@ -307,9 +309,9 @@ TEST(test_binary_dot) {
 // --- Multiple patterns ---
 
 static void _build_multi(Lex* l) {
-  lex_add(l, "", "if", 0);
-  lex_add(l, "", "else", 0);
-  lex_add(l, "", "[a-z]+", 0);
+  lex_add(l, "if", 0);
+  lex_add(l, "else", 0);
+  lex_add(l, "[a-z]+", 0);
 }
 
 TEST(test_multi) {
@@ -321,8 +323,8 @@ TEST(test_multi) {
 // --- Error: unmatched paren ---
 
 TEST(test_err_paren) {
-  Lex* l = lex_new("test.rules");
-  int32_t r = lex_add(l, "", "(abc", 0);
+  Lex* l = lex_new("test.rules", "");
+  int32_t r = lex_add(l, "(abc", 0);
   assert(r == LEX_ERR_PAREN);
   lex_del(l);
 }
@@ -330,15 +332,15 @@ TEST(test_err_paren) {
 // --- Error: unclosed bracket ---
 
 TEST(test_err_bracket) {
-  Lex* l = lex_new("test.rules");
-  int32_t r = lex_add(l, "", "[abc", 0);
+  Lex* l = lex_new("test.rules", "");
+  int32_t r = lex_add(l, "[abc", 0);
   assert(r == LEX_ERR_BRACKET);
   lex_del(l);
 }
 
 // --- Complex pattern: identifier ---
 
-static void _build_ident(Lex* l) { lex_add(l, "", "[a-zA-Z_][a-zA-Z0-9_]*", 0); }
+static void _build_ident(Lex* l) { lex_add(l, "[a-zA-Z_][a-zA-Z0-9_]*", 0); }
 
 TEST(test_ident) {
   char* out = _gen(_build_ident);
@@ -348,7 +350,7 @@ TEST(test_ident) {
 
 // --- Special class in char class ---
 
-static void _build_class_with_special(Lex* l) { lex_add(l, "", "[\\d\\s]", 0); }
+static void _build_class_with_special(Lex* l) { lex_add(l, "[\\d\\s]", 0); }
 
 TEST(test_class_with_special) {
   char* out = _gen(_build_class_with_special);
@@ -359,7 +361,7 @@ TEST(test_class_with_special) {
 
 // --- Clang compilation ---
 
-static void _write_and_compile(void (*fn)(Lex*), const char* test_name) {
+static void _write_and_compile_mode(void (*fn)(Lex*), const char* test_name, const char* mode) {
   char ll_path[128], obj_path[128];
   snprintf(ll_path, sizeof(ll_path), "%s/test_lex_%s.ll", BUILD_DIR, test_name);
   snprintf(obj_path, sizeof(obj_path), "%s/test_lex_%s.o", BUILD_DIR, test_name);
@@ -367,7 +369,7 @@ static void _write_and_compile(void (*fn)(Lex*), const char* test_name) {
   FILE* f = fopen(ll_path, "w");
   assert(f);
 
-  Lex* l = lex_new("test.rules");
+  Lex* l = lex_new("test.rules", mode);
   fn(l);
   lex_gen(l, f, TARGET);
   lex_del(l);
@@ -397,6 +399,8 @@ static void _write_and_compile(void (*fn)(Lex*), const char* test_name) {
   remove(ll_path);
 }
 
+static void _write_and_compile(void (*fn)(Lex*), const char* test_name) { _write_and_compile_mode(fn, test_name, ""); }
+
 TEST(test_compile_literal) { _write_and_compile(_build_literal, "literal"); }
 TEST(test_compile_charclass) { _write_and_compile(_build_charclass, "charclass"); }
 TEST(test_compile_neg_charclass) { _write_and_compile(_build_neg_charclass, "neg_charclass"); }
@@ -405,7 +409,7 @@ TEST(test_compile_group) { _write_and_compile(_build_group, "group"); }
 TEST(test_compile_optional) { _write_and_compile(_build_optional, "optional"); }
 TEST(test_compile_plus) { _write_and_compile(_build_plus, "plus"); }
 TEST(test_compile_star) { _write_and_compile(_build_star, "star"); }
-TEST(test_compile_icase) { _write_and_compile(_build_icase, "icase"); }
+TEST(test_compile_icase) { _write_and_compile_mode(_build_icase, "icase", "i"); }
 TEST(test_compile_multi) { _write_and_compile(_build_multi, "multi"); }
 TEST(test_compile_ident) { _write_and_compile(_build_ident, "ident"); }
 TEST(test_compile_dot) { _write_and_compile(_build_dot, "dot"); }

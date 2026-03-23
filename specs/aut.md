@@ -17,7 +17,7 @@ Can define actions (terminal states) on certain states -- because optimization m
 - `aut_action(dfa, state, action_id)`
   - marks a terminal state for emitting `action_id` when parsing
   - this functions means just "alias ephemeral state to eternal action_id". action numbering and meaning:
-    - -1: in generated code: when this happens, return invalid match, useful for defining word boundaries
+    - -1: in generated code: when this happens, return invalid match, useful for predicates
     - 0: no effect, can continue with more feeds
     - positive values: user defined action trigger, also can continue with more feeds
   - MIN-RULE: when defining different action_id on a same state, the minimal remains.

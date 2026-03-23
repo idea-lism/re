@@ -12,6 +12,8 @@ struct Lex {
   const char* source_file;
   int32_t next_action;
   bool started;
+  bool icase;
+  bool binary;
 };
 
 typedef struct {
@@ -345,12 +347,20 @@ static void _parse_expr(Parser* p) {
 
 // --- Public API ---
 
-Lex* lex_new(const char* source_file_name) {
+Lex* lex_new(const char* source_file_name, const char* mode) {
   Lex* l = calloc(1, sizeof(Lex));
   l->aut = aut_new("lex", source_file_name);
   l->re = re_new(l->aut);
   l->source_file = source_file_name;
   l->next_action = 1;
+  for (const char* m = mode; *m; m++) {
+    if (*m == 'i') {
+      l->icase = true;
+    }
+    if (*m == 'b') {
+      l->binary = true;
+    }
+  }
   re_lparen(l->re);
   return l;
 }
@@ -364,7 +374,7 @@ void lex_del(Lex* l) {
   free(l);
 }
 
-int32_t lex_add(Lex* l, const char* mode, const char* pattern, int32_t source_file_offset) {
+int32_t lex_add(Lex* l, const char* pattern, int32_t source_file_offset) {
   if (l->started) {
     re_fork(l->re);
   }
@@ -373,15 +383,8 @@ int32_t lex_add(Lex* l, const char* mode, const char* pattern, int32_t source_fi
   Parser p = {0};
   p.lex = l;
   p.offset = source_file_offset;
-
-  for (const char* m = mode; *m; m++) {
-    if (*m == 'i') {
-      p.icase = true;
-    }
-    if (*m == 'b') {
-      p.binary = true;
-    }
-  }
+  p.icase = l->icase;
+  p.binary = l->binary;
 
   int32_t len = (int32_t)strlen(pattern);
   if (p.binary) {
