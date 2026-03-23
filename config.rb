@@ -49,7 +49,7 @@ AR = ENV["AR"] || "ar"
 CLANG_FORMAT = RUBY_PLATFORM =~ /darwin/ ? "xcrun clang-format" : "clang-format"
 
 ARCH_CFLAGS = RUBY_PLATFORM =~ /x86_64|amd64/ ? "-mavx2" : ""
-BASE_CFLAGS = "-std=c23 -Wall -Wextra -Werror -pedantic #{ARCH_CFLAGS}".strip
+BASE_CFLAGS = "-std=c23 -Wall -Wextra -Werror #{ARCH_CFLAGS}".strip
 EXTRA_CFLAGS = $mode_cflags.fetch(MODE, "")
 CFLAGS = "#{BASE_CFLAGS} #{EXTRA_CFLAGS}".strip
 

@@ -220,5 +220,3 @@ int ustr_validate(const uint8_t* data, size_t sz, uint8_t* marks) {
 }
 
 #endif // __aarch64__
-
-typedef int _unused;

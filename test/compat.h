@@ -1,8 +1,14 @@
 #pragma once
 
-// Expose POSIX APIs (open_memstream, popen, pclose) on glibc with -std=c23 -pedantic.
+// Portable shims for POSIX / Windows differences.
+
 #if !defined(_WIN32) && !defined(_POSIX_C_SOURCE)
 #define _POSIX_C_SOURCE 200809L
+#endif
+
+#ifdef _WIN32
+#define popen _popen
+#define pclose _pclose
 #endif
 
 #include <stdio.h>
@@ -11,7 +17,7 @@
 
 // Portable open_memstream / close pair.
 // On POSIX, delegates to open_memstream + fclose.
-// On Windows, uses tmpfile() + manual buffer extraction.
+// On Windows, uses tmpfile() + manual buffer extraction (open_memstream doesn't exist in ucrt).
 
 #ifdef _WIN32
 
@@ -33,12 +39,6 @@ static inline void compat_close_memstream(FILE* f, char** buf, size_t* size) {
   fclose(f);
 }
 
-static inline FILE* compat_popen(const char* cmd, const char* mode) {
-  return _popen(cmd, mode);
-}
-
-static inline int compat_pclose(FILE* f) { return _pclose(f); }
-
 #else
 
 static inline FILE* compat_open_memstream(char** buf, size_t* size) { return open_memstream(buf, size); }
@@ -49,14 +49,9 @@ static inline void compat_close_memstream(FILE* f, char** buf, size_t* size) {
   fclose(f);
 }
 
-static inline FILE* compat_popen(const char* cmd, const char* mode) { return popen(cmd, mode); }
-
-static inline int compat_pclose(FILE* f) { return pclose(f); }
-
 #endif
 
 // Compiler command for LLVM IR compilation tests.
-// Uses LLVM_CC env var if set, otherwise platform default.
 static inline const char* compat_llvm_cc(void) {
   const char* cc = getenv("LLVM_CC");
   if (cc) {

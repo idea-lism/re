@@ -249,5 +249,3 @@ int ustr_validate(const uint8_t* data, size_t sz, uint8_t* marks) {
 }
 
 #endif // __AVX2__
-
-typedef int _unused;
