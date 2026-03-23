@@ -1,5 +1,5 @@
-#include "compat.h"
 #include "../src/irwriter.h"
+#include "compat.h"
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -294,7 +294,7 @@ TEST(test_dfa_function) {
 }
 
 TEST(test_lifecycle) {
-  FILE* f = fopen("/dev/null", "w");
+  FILE* f = compat_devnull_w();
   assert(f);
   IrWriter* w = irwriter_new(f, TARGET);
   assert(w);
@@ -313,8 +313,9 @@ TEST(test_lifecycle) {
 }
 
 TEST(test_clang_compile) {
-  const char* ll_path = "/tmp/test_irwriter.ll";
-  const char* obj_path = "/tmp/test_irwriter.o";
+  char ll_path[128], obj_path[128];
+  snprintf(ll_path, sizeof(ll_path), "%s/test_irwriter.ll", BUILD_DIR);
+  snprintf(obj_path, sizeof(obj_path), "%s/test_irwriter.o", BUILD_DIR);
   FILE* f = fopen(ll_path, "w");
   assert(f);
   IrWriter* w = irwriter_new(f, TARGET);

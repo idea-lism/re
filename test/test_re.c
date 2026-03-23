@@ -1,5 +1,5 @@
-#include "compat.h"
 #include "../src/re.h"
+#include "compat.h"
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -353,8 +353,8 @@ TEST(test_action) {
 
 static void _write_and_compile(void (*fn)(Aut*, Re*, IrWriter*), const char* test_name) {
   char ll_path[128], obj_path[128];
-  snprintf(ll_path, sizeof(ll_path), "/tmp/test_re_%s.ll", test_name);
-  snprintf(obj_path, sizeof(obj_path), "/tmp/test_re_%s.o", test_name);
+  snprintf(ll_path, sizeof(ll_path), "%s/test_re_%s.ll", BUILD_DIR, test_name);
+  snprintf(obj_path, sizeof(obj_path), "%s/test_re_%s.o", BUILD_DIR, test_name);
 
   FILE* f = fopen(ll_path, "w");
   assert(f);

@@ -1,5 +1,5 @@
-#include "compat.h"
 #include "../src/lex.h"
+#include "compat.h"
 #include <assert.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -361,8 +361,8 @@ TEST(test_class_with_special) {
 
 static void _write_and_compile(void (*fn)(Lex*), const char* test_name) {
   char ll_path[128], obj_path[128];
-  snprintf(ll_path, sizeof(ll_path), "/tmp/test_lex_%s.ll", test_name);
-  snprintf(obj_path, sizeof(obj_path), "/tmp/test_lex_%s.o", test_name);
+  snprintf(ll_path, sizeof(ll_path), "%s/test_lex_%s.ll", BUILD_DIR, test_name);
+  snprintf(obj_path, sizeof(obj_path), "%s/test_lex_%s.o", BUILD_DIR, test_name);
 
   FILE* f = fopen(ll_path, "w");
   assert(f);

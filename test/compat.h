@@ -51,6 +51,15 @@ static inline void compat_close_memstream(FILE* f, char** buf, size_t* size) {
 
 #endif
 
+// Portable /dev/null (NUL on Windows) opened for writing.
+static inline FILE* compat_devnull_w(void) {
+#ifdef _WIN32
+  return fopen("NUL", "w");
+#else
+  return fopen("/dev/null", "w");
+#endif
+}
+
 // Compiler command for LLVM IR compilation tests.
 static inline const char* compat_llvm_cc(void) {
   const char* cc = getenv("LLVM_CC");
