@@ -8,9 +8,9 @@ ninja
 Run tests / benchmarks
 
 ```
-script/test # in release mode
-script/test debug
-script/benchmark
+scripts/test # in release mode
+scripts/test debug
+scripts/benchmark
 ```
 
 Clang-format:
