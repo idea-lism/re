@@ -1,3 +1,4 @@
+#include "compat.h"
 #include "../src/bitset.h"
 #include <assert.h>
 #include <stdio.h>
