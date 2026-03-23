@@ -33,7 +33,33 @@ struct IrWriter {
   int decls_cap;
 };
 
+static void _validate_name(const char* s, const char* label) {
+  for (const char* p = s; *p; p++) {
+    if (*p == '"' || *p == '\\') {
+      fprintf(stderr, "irwriter: %s contains invalid character '%c'\n", label, *p);
+      abort();
+    }
+  }
+}
+
+static void _validate_triple(const char* s) {
+  if (!*s) {
+    fprintf(stderr, "irwriter: target_triple is empty\n");
+    abort();
+  }
+  for (const char* p = s; *p; p++) {
+    char c = *p;
+    if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '.' || c == '_' ||
+        c == '-') {
+      continue;
+    }
+    fprintf(stderr, "irwriter: target_triple contains invalid character '%c'\n", c);
+    abort();
+  }
+}
+
 IrWriter* irwriter_new(FILE* out, const char* target_triple) {
+  _validate_triple(target_triple);
   IrWriter* w = calloc(1, sizeof(IrWriter));
   w->out = out;
   w->target_triple = target_triple;
@@ -52,6 +78,8 @@ void irwriter_del(IrWriter* w) {
 }
 
 void irwriter_start(IrWriter* w, const char* source_file, const char* directory) {
+  _validate_name(source_file, "source_file");
+  _validate_name(directory, "directory");
   w->source_file = source_file;
   w->directory = directory;
   fprintf(w->out, "source_filename = \"%s\"\n", source_file);
@@ -94,6 +122,7 @@ static void _emit_dbg_suffix(IrWriter* w, int id) {
 
 void irwriter_define_start(IrWriter* w, const char* name, const char* ret_type, int argc, const char** arg_types,
                            const char** arg_names) {
+  _validate_name(name, "function_name");
   // Emit module-level debug metadata once
   if (!w->dbg_flags_emitted) {
     w->dbg_flags_emitted = 1;

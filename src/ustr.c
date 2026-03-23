@@ -15,13 +15,9 @@ static inline const int32_t* _size_ptr_const(const char* s) { return (const int3
 
 static inline uint8_t* _marks_ptr(char* s, int32_t size) { return (uint8_t*)(s + size + 1); }
 
-static inline const uint8_t* _marks_ptr_const(const char* s, int32_t size) {
-  return (const uint8_t*)(s + size + 1);
-}
+static inline const uint8_t* _marks_ptr_const(const char* s, int32_t size) { return (const uint8_t*)(s + size + 1); }
 
-static inline size_t _alloc_size(int32_t size) {
-  return sizeof(int32_t) + (size_t)size + 1 + ((size_t)size + 7) / 8;
-}
+static inline size_t _alloc_size(int32_t size) { return sizeof(int32_t) + (size_t)size + 1 + ((size_t)size + 7) / 8; }
 
 // Scalar UTF-8 DFA validator (Bjoern Hoehrmann style)
 

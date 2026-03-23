@@ -25,7 +25,7 @@ typedef struct {
 // --- DFA state (after determinization) ---
 
 typedef struct {
-  Bitset *nfa_states;
+  Bitset* nfa_states;
 } DfaState;
 
 typedef struct {
@@ -41,42 +41,42 @@ typedef struct {
 // --- Aut ---
 
 struct Aut {
-  const char *function_name;
-  const char *source_file_name;
+  const char* function_name;
+  const char* source_file_name;
 
-  NfaTrans *nfa_trans;
+  NfaTrans* nfa_trans;
   int nfa_ntrans;
   int nfa_trans_cap;
 
-  EpsTrans *eps_trans;
+  EpsTrans* eps_trans;
   int eps_ntrans;
   int eps_trans_cap;
 
-  int32_t *state_actions;
+  int32_t* state_actions;
   int32_t state_actions_cap;
 
   int32_t max_state;
 
-  DfaState *dfa_states;
+  DfaState* dfa_states;
   int dfa_nstates;
   int dfa_states_cap;
 
-  DfaTrans *dfa_trans;
+  DfaTrans* dfa_trans;
   int dfa_ntrans;
   int dfa_trans_cap;
 
   int optimized;
 };
 
-Aut *aut_new(const char *function_name, const char *source_file_name) {
-  Aut *a = calloc(1, sizeof(Aut));
+Aut* aut_new(const char* function_name, const char* source_file_name) {
+  Aut* a = calloc(1, sizeof(Aut));
   a->function_name = function_name;
   a->source_file_name = source_file_name;
   a->max_state = -1;
   return a;
 }
 
-void aut_del(Aut *a) {
+void aut_del(Aut* a) {
   if (!a) {
     return;
   }
@@ -91,13 +91,13 @@ void aut_del(Aut *a) {
   free(a);
 }
 
-static void _track_state(Aut *a, int32_t s) {
+static void _track_state(Aut* a, int32_t s) {
   if (s > a->max_state) {
     a->max_state = s;
   }
 }
 
-void aut_transition(Aut *a, TransitionDef tdef, DebugInfo di) {
+void aut_transition(Aut* a, TransitionDef tdef, DebugInfo di) {
   if (a->nfa_ntrans == a->nfa_trans_cap) {
     a->nfa_trans_cap = a->nfa_trans_cap ? a->nfa_trans_cap * 2 : 64;
     a->nfa_trans = realloc(a->nfa_trans, (size_t)a->nfa_trans_cap * sizeof(NfaTrans));
@@ -114,7 +114,7 @@ void aut_transition(Aut *a, TransitionDef tdef, DebugInfo di) {
   _track_state(a, tdef.to_state_id);
 }
 
-void aut_epsilon(Aut *a, int32_t from_state, int32_t to_state) {
+void aut_epsilon(Aut* a, int32_t from_state, int32_t to_state) {
   if (a->eps_ntrans == a->eps_trans_cap) {
     a->eps_trans_cap = a->eps_trans_cap ? a->eps_trans_cap * 2 : 64;
     a->eps_trans = realloc(a->eps_trans, (size_t)a->eps_trans_cap * sizeof(EpsTrans));
@@ -124,7 +124,7 @@ void aut_epsilon(Aut *a, int32_t from_state, int32_t to_state) {
   _track_state(a, to_state);
 }
 
-void aut_action(Aut *a, int32_t state, int32_t action_id) {
+void aut_action(Aut* a, int32_t state, int32_t action_id) {
   if (action_id == 0) {
     return;
   }
@@ -147,9 +147,9 @@ void aut_action(Aut *a, int32_t state, int32_t action_id) {
 // --- Epsilon closure ---
 // Returns the closure bitset and writes the min non-zero action_id from states in the closure.
 
-static Bitset *_epsilon_closure(Bitset *states, EpsTrans *eps, int neps, int nstates, int32_t *sa, int32_t sa_n,
-                                int32_t *out_action) {
-  Bitset *result = bitset_or(states, states); // copy
+static Bitset* _epsilon_closure(Bitset* states, EpsTrans* eps, int neps, int nstates, int32_t* sa, int32_t sa_n,
+                                int32_t* out_action) {
+  Bitset* result = bitset_or(states, states); // copy
   int changed = 1;
   while (changed) {
     changed = 0;
@@ -178,16 +178,16 @@ static Bitset *_epsilon_closure(Bitset *states, EpsTrans *eps, int neps, int nst
 
 // --- Interval splitting for subset construction ---
 
-static int _cmp_int32(const void *a, const void *b) {
-  int32_t x = *(const int32_t *)a;
-  int32_t y = *(const int32_t *)b;
+static int _cmp_int32(const void* a, const void* b) {
+  int32_t x = *(const int32_t*)a;
+  int32_t y = *(const int32_t*)b;
   return (x > y) - (x < y);
 }
 
 // --- Subset construction ---
 
-static void _determinize(Aut *a, Bitset *initial, NfaTrans *nfa, int nnfa, EpsTrans *eps, int neps, int nstates,
-                         int32_t *sa, int32_t sa_n) {
+static void _determinize(Aut* a, Bitset* initial, NfaTrans* nfa, int nnfa, EpsTrans* eps, int neps, int nstates,
+                         int32_t* sa, int32_t sa_n) {
   // Clear existing DFA
   for (int i = 0; i < a->dfa_nstates; i++) {
     bitset_del(a->dfa_states[i].nfa_states);
@@ -196,7 +196,7 @@ static void _determinize(Aut *a, Bitset *initial, NfaTrans *nfa, int nnfa, EpsTr
   a->dfa_ntrans = 0;
 
   // DFA state 0 = epsilon closure of initial
-  Bitset *start = _epsilon_closure(initial, eps, neps, nstates, sa, sa_n, NULL);
+  Bitset* start = _epsilon_closure(initial, eps, neps, nstates, sa, sa_n, NULL);
 
   if (a->dfa_nstates == a->dfa_states_cap) {
     a->dfa_states_cap = a->dfa_states_cap ? a->dfa_states_cap * 2 : 64;
@@ -205,7 +205,7 @@ static void _determinize(Aut *a, Bitset *initial, NfaTrans *nfa, int nnfa, EpsTr
   a->dfa_states[a->dfa_nstates++] = (DfaState){.nfa_states = start};
 
   // Collect all split points from NFA transitions
-  int32_t *splits = NULL;
+  int32_t* splits = NULL;
   int nsplits = 0;
   int splits_cap = 0;
 
@@ -231,14 +231,14 @@ static void _determinize(Aut *a, Bitset *initial, NfaTrans *nfa, int nnfa, EpsTr
   int worklist_head = 0;
   while (worklist_head < a->dfa_nstates) {
     int cur_dfa = worklist_head++;
-    Bitset *cur_set = a->dfa_states[cur_dfa].nfa_states;
+    Bitset* cur_set = a->dfa_states[cur_dfa].nfa_states;
 
     for (int si = 0; si + 1 < nsplits; si++) {
       int32_t lo = splits[si];
       int32_t hi = splits[si + 1] - 1;
 
       // Find all NFA transitions that fire on any codepoint in [lo, hi]
-      Bitset *target = bitset_new();
+      Bitset* target = bitset_new();
       int32_t best_line = 0, best_col = 0;
       int has_line = 0;
 
@@ -262,7 +262,7 @@ static void _determinize(Aut *a, Bitset *initial, NfaTrans *nfa, int nnfa, EpsTr
       }
 
       int32_t action = 0;
-      Bitset *closed = _epsilon_closure(target, eps, neps, nstates, sa, sa_n, &action);
+      Bitset* closed = _epsilon_closure(target, eps, neps, nstates, sa, sa_n, &action);
       bitset_del(target);
 
       // Find or create DFA state for closed
@@ -306,9 +306,9 @@ static void _determinize(Aut *a, Bitset *initial, NfaTrans *nfa, int nnfa, EpsTr
 
 // --- Simple determinization for when optimize is not called ---
 
-static void _simple_determinize(Aut *a) {
+static void _simple_determinize(Aut* a) {
   int nstates = a->max_state + 1;
-  Bitset *init = bitset_new();
+  Bitset* init = bitset_new();
   bitset_add_bit(init, 0);
   _determinize(a, init, a->nfa_trans, a->nfa_ntrans, a->eps_trans, a->eps_ntrans, nstates, a->state_actions,
                a->state_actions_cap);
@@ -320,7 +320,7 @@ static void _simple_determinize(Aut *a) {
 // Two states are equivalent if they have the same transitions
 // (same target partition and same action_id) for every codepoint interval.
 
-void aut_optimize(Aut *a) {
+void aut_optimize(Aut* a) {
   if (a->max_state < 0) {
     a->optimized = 1;
     return;
@@ -336,7 +336,7 @@ void aut_optimize(Aut *a) {
   }
 
   // Collect all split points from DFA transitions
-  int32_t *splits = NULL;
+  int32_t* splits = NULL;
   int nsplits = 0;
   int splits_cap = 0;
   for (int t = 0; t < a->dfa_ntrans; t++) {
@@ -359,8 +359,8 @@ void aut_optimize(Aut *a) {
 
   // For each state and interval, precompute (target_state, action_id).
   // -1 means no transition.
-  int32_t *tgt = calloc((size_t)(n * nintervals), sizeof(int32_t));
-  int32_t *act = calloc((size_t)(n * nintervals), sizeof(int32_t));
+  int32_t* tgt = calloc((size_t)(n * nintervals), sizeof(int32_t));
+  int32_t* act = calloc((size_t)(n * nintervals), sizeof(int32_t));
   for (int i = 0; i < n * nintervals; i++) {
     tgt[i] = -1;
   }
@@ -378,7 +378,7 @@ void aut_optimize(Aut *a) {
   }
 
   // Partition: partition[s] = partition id for state s
-  int32_t *partition = calloc((size_t)n, sizeof(int32_t));
+  int32_t* partition = calloc((size_t)n, sizeof(int32_t));
   int npartitions = 0;
 
   // Initial partition: group by action signature (action_ids on all intervals)
@@ -487,8 +487,8 @@ void aut_optimize(Aut *a) {
 
   // Build minimized DFA
   // Map old state -> representative (smallest state in same partition)
-  int32_t *repr = calloc((size_t)n, sizeof(int32_t));
-  int32_t *new_id = calloc((size_t)n, sizeof(int32_t));
+  int32_t* repr = calloc((size_t)n, sizeof(int32_t));
+  int32_t* new_id = calloc((size_t)n, sizeof(int32_t));
   for (int i = 0; i < n; i++) {
     repr[i] = -1;
     new_id[i] = -1;
@@ -511,7 +511,7 @@ void aut_optimize(Aut *a) {
   // Rebuild transitions: for each transition, remap from/to to new ids.
   // Skip duplicate transitions (same new_from, new_to, cp range, action).
   int new_ntrans = 0;
-  DfaTrans *new_trans = malloc((size_t)(a->dfa_ntrans > 0 ? a->dfa_ntrans : 1) * sizeof(DfaTrans));
+  DfaTrans* new_trans = malloc((size_t)(a->dfa_ntrans > 0 ? a->dfa_ntrans : 1) * sizeof(DfaTrans));
   for (int t = 0; t < a->dfa_ntrans; t++) {
     int old_from = a->dfa_trans[t].from;
     int old_to = a->dfa_trans[t].to;
@@ -575,7 +575,7 @@ void aut_optimize(Aut *a) {
   a->optimized = 1;
 }
 
-int32_t aut_dfa_nstates(Aut *a) {
+int32_t aut_dfa_nstates(Aut* a) {
   if (!a->optimized) {
     _simple_determinize(a);
   }
@@ -584,7 +584,7 @@ int32_t aut_dfa_nstates(Aut *a) {
 
 // --- IR generation ---
 
-void aut_gen_dfa(Aut *a, IrWriter *w, bool debug_mode) {
+void aut_gen_dfa(Aut* a, IrWriter* w, bool debug_mode) {
   if (!a->optimized) {
     _simple_determinize(a);
   }
@@ -593,9 +593,9 @@ void aut_gen_dfa(Aut *a, IrWriter *w, bool debug_mode) {
     irwriter_declare(w, "void", "llvm.debugtrap", "");
   }
 
-  const char *ret_ty = "{i32, i32}";
-  const char *arg_types[] = {"i32", "i32"};
-  const char *arg_names[] = {"state", "cp"};
+  const char* ret_ty = "{i32, i32}";
+  const char* arg_types[] = {"i32", "i32"};
+  const char* arg_names[] = {"state", "cp"};
   irwriter_define_start(w, a->function_name, ret_ty, 2, arg_types, arg_names);
 
   // entry: switch on %state
@@ -640,7 +640,7 @@ void aut_gen_dfa(Aut *a, IrWriter *w, bool debug_mode) {
       continue;
     }
 
-    DfaTrans *ft = &a->dfa_trans[first_trans];
+    DfaTrans* ft = &a->dfa_trans[first_trans];
     if (ft->line > 0) {
       irwriter_dbg(w, ft->line, ft->col);
     }
@@ -665,7 +665,7 @@ void aut_gen_dfa(Aut *a, IrWriter *w, bool debug_mode) {
     snprintf(after_switch_label, sizeof(after_switch_label), "s%d_ranges", s);
 
     if (has_switch > 0) {
-      const char *sw_default = has_range > 0 ? after_switch_label : nomatch_label;
+      const char* sw_default = has_range > 0 ? after_switch_label : nomatch_label;
       irwriter_switch_start(w, "i32", "%cp", sw_default);
 
       for (int t = 0; t < a->dfa_ntrans; t++) {
@@ -690,7 +690,7 @@ void aut_gen_dfa(Aut *a, IrWriter *w, bool debug_mode) {
           continue;
         }
 
-        DfaTrans *dt = &a->dfa_trans[t];
+        DfaTrans* dt = &a->dfa_trans[t];
         if (dt->line > 0) {
           irwriter_dbg(w, dt->line, dt->col);
         }
@@ -733,7 +733,7 @@ void aut_gen_dfa(Aut *a, IrWriter *w, bool debug_mode) {
       if (a->dfa_trans[t].from != s) {
         continue;
       }
-      DfaTrans *dt = &a->dfa_trans[t];
+      DfaTrans* dt = &a->dfa_trans[t];
 
       char match_label[32];
       snprintf(match_label, sizeof(match_label), "s%d_t%d", s, t);

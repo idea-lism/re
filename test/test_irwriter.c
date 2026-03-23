@@ -372,12 +372,12 @@ TEST(test_clang_compile) {
 
   char cmd[256];
   snprintf(cmd, sizeof(cmd), "%s -c %s -o %s 2>&1", compat_llvm_cc(), ll_path, obj_path);
-  FILE* p = popen(cmd, "r");
+  FILE* p = compat_popen(cmd, "r");
   assert(p);
   char output[4096] = {0};
   size_t n = fread(output, 1, sizeof(output) - 1, p);
   output[n] = '\0';
-  int status = pclose(p);
+  int status = compat_pclose(p);
   if (status != 0) {
     fprintf(stderr, "\nclang failed:\n%s\n", output);
     // dump the .ll for debugging

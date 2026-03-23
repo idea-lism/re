@@ -1,5 +1,10 @@
 #pragma once
 
+// Expose POSIX APIs (open_memstream, popen, pclose) on glibc with -std=c23 -pedantic.
+#if !defined(_WIN32) && !defined(_POSIX_C_SOURCE)
+#define _POSIX_C_SOURCE 200809L
+#endif
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -28,6 +33,12 @@ static inline void compat_close_memstream(FILE* f, char** buf, size_t* size) {
   fclose(f);
 }
 
+static inline FILE* compat_popen(const char* cmd, const char* mode) {
+  return _popen(cmd, mode);
+}
+
+static inline int compat_pclose(FILE* f) { return _pclose(f); }
+
 #else
 
 static inline FILE* compat_open_memstream(char** buf, size_t* size) { return open_memstream(buf, size); }
@@ -37,6 +48,10 @@ static inline void compat_close_memstream(FILE* f, char** buf, size_t* size) {
   (void)size;
   fclose(f);
 }
+
+static inline FILE* compat_popen(const char* cmd, const char* mode) { return popen(cmd, mode); }
+
+static inline int compat_pclose(FILE* f) { return pclose(f); }
 
 #endif
 
