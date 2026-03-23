@@ -4,6 +4,8 @@
     - what target wants what sources
     - what extra flags / cflags should be used in different envs
   - controls: `config.rb debug` and `config.rb release` generates different results
+  - for download task, use Ruby's builtin open-uri to download
+  - for unzip task, add unzip prereq in README.md
 
 - Implement in C, not C++.
 

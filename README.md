@@ -4,7 +4,7 @@ Regex-to-LLVM-IR compiler. Define patterns, generate a DFA as LLVM IR, link it i
 
 ## Build
 
-Requires Ruby and [Ninja](https://ninja-build.org/).
+Requires Ruby, [Ninja](https://ninja-build.org/), and `unzip`.
 
 ```
 ruby config.rb debug    # or: ruby config.rb release

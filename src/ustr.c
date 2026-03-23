@@ -70,7 +70,7 @@ int ustr_validate_scalar(const uint8_t* data, size_t sz, uint8_t* marks) {
   return (state == S_ACC) ? 0 : -1;
 }
 
-#ifndef __aarch64__
+#if !defined(__aarch64__) && !defined(__AVX2__)
 int ustr_validate(const uint8_t* data, size_t sz, uint8_t* marks) { return ustr_validate_scalar(data, sz, marks); }
 #endif
 

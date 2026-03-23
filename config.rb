@@ -20,8 +20,8 @@ def exe(name, srcs:, deps: [])
   $exes << { name: name, srcs: srcs, deps: deps }
 end
 
-def combined_lib(name, deps:)
-  $combined_libs << { name: name, deps: deps }
+def combined_lib(name, srcs:)
+  $combined_libs << { name: name, srcs: srcs }
 end
 
 def amalgamate(input:, output:, include_dirs: [])
@@ -48,22 +48,45 @@ CC = ENV["CC"] || "cc"
 AR = ENV["AR"] || "ar"
 CLANG_FORMAT = RUBY_PLATFORM =~ /darwin/ ? "xcrun clang-format" : "clang-format"
 
-BASE_CFLAGS = "-std=c23 -Wall -Wextra -Werror -pedantic"
+ARCH_CFLAGS = RUBY_PLATFORM =~ /x86_64|amd64/ ? "-mavx2" : ""
+BASE_CFLAGS = "-std=c23 -Wall -Wextra -Werror -pedantic #{ARCH_CFLAGS}".strip
 EXTRA_CFLAGS = $mode_cflags.fetch(MODE, "")
 CFLAGS = "#{BASE_CFLAGS} #{EXTRA_CFLAGS}".strip
 
 BUILDDIR = "build/#{MODE}"
 
-# --- Amalgamate tool URL ---
+# --- Ensure amalgamate tool is available ---
+require 'open-uri'
+require 'fileutils'
+
 def amalgamate_url
+  base = "https://github.com/rindeal/Amalgamate/releases/download/v0.99.0"
   case RUBY_PLATFORM
   when /darwin/
-    "https://github.com/rindeal/Amalgamate/releases/download/v0.99.0/amalgamate-v0.99.0-darwin-arm64.zip"
+    "#{base}/amalgamate-v0.99.0-darwin-arm64.zip"
   when /mingw|mswin|cygwin/
-    "https://github.com/rindeal/Amalgamate/releases/download/v0.99.0/amalgamate-v0.99.0-windows-amd64.zip"
+    "#{base}/amalgamate-v0.99.0-windows-amd64.zip"
   else
-    "https://github.com/rindeal/Amalgamate/releases/download/v0.99.0/amalgamate-v0.99.0-linux-amd64.zip"
+    "#{base}/amalgamate-v0.99.0-linux-amd64.zip"
   end
+end
+
+TOOL_BIN = "build/tools/amalgamate"
+
+unless File.executable?(TOOL_BIN)
+  FileUtils.mkdir_p("build/tools")
+  zip_path = "build/tools/amalgamate.zip"
+  puts "Downloading amalgamate..."
+  URI.open(amalgamate_url) do |remote|
+    File.binwrite(zip_path, remote.read)
+  end
+  system("unzip", "-o", zip_path, "-d", "build/tools/", out: File::NULL) || abort("unzip failed")
+  # The zip contains a subdirectory; move the binary up
+  Dir.glob("build/tools/*/amalgamate").each do |bin|
+    FileUtils.mv(bin, TOOL_BIN)
+  end
+  FileUtils.chmod(0o755, TOOL_BIN) unless RUBY_PLATFORM =~ /mingw|mswin|cygwin/
+  FileUtils.rm_f(zip_path)
 end
 
 # --- Generate build.ninja ---
@@ -88,23 +111,23 @@ File.open("build.ninja", "w") do |f|
   f.puts ""
 
   lib_outputs = {}
-  lib_objs = {}
+  emitted = {}
 
   # Libraries
   $libs.each do |lib|
     objs = lib[:srcs].map do |src|
       obj = "#{BUILDDIR}/#{src.sub(/\.c$/, '.o')}"
-      f.puts "build #{obj}: cc #{src}"
+      unless emitted[obj]
+        f.puts "build #{obj}: cc #{src}"
+        emitted[obj] = true
+      end
       obj
     end
     ar_out = "#{BUILDDIR}/lib#{lib[:name]}.a"
     f.puts "build #{ar_out}: ar #{objs.join(' ')}"
     f.puts ""
     lib_outputs[lib[:name]] = ar_out
-    lib_objs[lib[:name]] = objs
   end
-
-  emitted = {}
 
   # Executables
   $exes.each do |exe|
@@ -125,7 +148,14 @@ File.open("build.ninja", "w") do |f|
 
   # Combined libraries
   $combined_libs.each do |cl|
-    all_objs = cl[:deps].flat_map { |d| lib_objs[d] || [] }
+    all_objs = cl[:srcs].map do |src|
+      obj = "#{BUILDDIR}/#{src.sub(/\.c$/, '.o')}"
+      unless emitted[obj]
+        f.puts "build #{obj}: cc #{src}"
+        emitted[obj] = true
+      end
+      obj
+    end
     out = "out/lib#{cl[:name]}.a"
     f.puts "build #{out}: ar #{all_objs.join(' ')}"
     f.puts ""
@@ -133,26 +163,15 @@ File.open("build.ninja", "w") do |f|
 
   # Amalgamate
   unless $amalgamates.empty?
-    tool_bin = "build/tools/amalgamate"
-    url = amalgamate_url
-
-    f.puts "rule download_amalgamate"
-    f.puts "  command = mkdir -p build/tools && curl -sL #{url} -o build/tools/amalgamate.zip && unzip -o build/tools/amalgamate.zip -d build/tools/ > /dev/null && mv build/tools/*/amalgamate #{tool_bin} && chmod +x #{tool_bin}"
-    f.puts "  description = DOWNLOAD amalgamate"
-    f.puts ""
-    f.puts "build #{tool_bin}: download_amalgamate"
-    f.puts ""
-
     f.puts "rule amalgamate"
-    f.puts "  command = #{tool_bin} $flags $in $out"
+    f.puts "  command = #{TOOL_BIN} $flags $in $out"
     f.puts "  description = AMALGAMATE $out"
     f.puts ""
 
     $amalgamates.each do |am|
       flags = am[:include_dirs].map { |d| "-i #{d}" }.join(' ')
-      # Collect all source files as implicit deps for rebuild
       src_files = Dir.glob(am[:include_dirs].map { |d| "#{d}/*.{c,h}" }).sort.join(' ')
-      f.puts "build #{am[:output]}: amalgamate #{am[:input]} | #{tool_bin} #{src_files}"
+      f.puts "build #{am[:output]}: amalgamate #{am[:input]} | #{src_files}"
       f.puts "  flags = #{flags}"
       f.puts ""
     end
@@ -179,7 +198,7 @@ File.open("build.ninja", "w") do |f|
   f.puts ""
 
   # Format
-  all_srcs = ($libs.flat_map { |l| l[:srcs] } + $exes.flat_map { |e| e[:srcs] }).uniq
+  all_srcs = ($libs.flat_map { |l| l[:srcs] } + $exes.flat_map { |e| e[:srcs] } + $combined_libs.flat_map { |cl| cl[:srcs] }).uniq
   all_hdrs = all_srcs.flat_map { |s| [s.sub(/\.c$/, '.h'), s.sub(/\.c$/, '_intern.h')] }.select { |h| File.exist?(h) }
   fmt_files = (all_srcs + all_hdrs).sort.uniq.join(' ')
   f.puts "rule format"

@@ -8,7 +8,7 @@
 // Scalar UTF-8 validator (always available).
 int ustr_validate_scalar(const uint8_t* data, size_t sz, uint8_t* marks);
 
-// Primary validator (NEON on aarch64, scalar fallback otherwise).
+// Primary validator (NEON on aarch64, AVX2 on x86_64, scalar fallback otherwise).
 int ustr_validate(const uint8_t* data, size_t sz, uint8_t* marks);
 
 // Naive (bit-by-bit) versions of size/slice for benchmarking.
