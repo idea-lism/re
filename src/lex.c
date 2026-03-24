@@ -30,8 +30,6 @@ typedef struct {
 
 static void _parse_expr(Parser* p);
 
-// --- Parser helpers ---
-
 static int32_t _peek(Parser* p) {
   if (p->pos >= p->ncp) {
     return -1;
@@ -47,8 +45,6 @@ static int32_t _advance(Parser* p) {
 }
 
 static DebugInfo _di(Parser* p) { return (DebugInfo){p->offset, p->pos}; }
-
-// --- Case helpers ---
 
 static void _range_add_icase(ReRange* range, int32_t start, int32_t end, bool icase) {
   re_range_add(range, start, end);
@@ -80,8 +76,6 @@ static void _emit_ch(Parser* p, int32_t cp) {
   }
 }
 
-// --- Special character classes ---
-
 static void _add_class_ranges(ReRange* range, int32_t cls) {
   switch (cls) {
   case 's':
@@ -105,8 +99,6 @@ static void _add_class_ranges(ReRange* range, int32_t cls) {
   }
 }
 
-// --- Escape parsing ---
-
 static int32_t _c_escape(int32_t ch) {
   switch (ch) {
   case 'n':
@@ -127,7 +119,7 @@ static int32_t _c_escape(int32_t ch) {
 }
 
 static int32_t _parse_unicode_escape(Parser* p) {
-  _advance(p); // consume '{'
+  _advance(p);
   int32_t cp = 0;
   while (_peek(p) != '}' && _peek(p) >= 0) {
     int32_t ch = _advance(p);
@@ -145,7 +137,6 @@ static int32_t _parse_unicode_escape(Parser* p) {
   return cp;
 }
 
-// Returns codepoint, or -1 if special class was added to range directly.
 static int32_t _parse_class_escape(Parser* p, ReRange* range) {
   int32_t ch = _advance(p);
   if (ch < 0) {
@@ -169,13 +160,11 @@ static int32_t _parse_class_escape(Parser* p, ReRange* range) {
   }
 }
 
-// --- Parse functions ---
-
 static void _parse_charclass(Parser* p) {
   if (p->err) {
     return;
   }
-  _advance(p); // consume '['
+  _advance(p);
 
   bool neg = false;
   if (_peek(p) == '^') {
@@ -195,7 +184,7 @@ static void _parse_charclass(Parser* p) {
     }
 
     if (cp >= 0 && _peek(p) == '-' && p->pos + 1 < p->ncp && p->cps[p->pos + 1] != ']') {
-      _advance(p); // consume '-'
+      _advance(p);
       int32_t cp2;
       if (_peek(p) == '\\') {
         _advance(p);
@@ -218,7 +207,7 @@ static void _parse_charclass(Parser* p) {
     re_range_del(range);
     return;
   }
-  _advance(p); // consume ']'
+  _advance(p);
 
   if (neg) {
     re_range_neg(range);
@@ -344,8 +333,6 @@ static void _parse_expr(Parser* p) {
     _parse_branch(p);
   }
 }
-
-// --- Public API ---
 
 Lex* lex_new(const char* source_file_name, const char* mode) {
   Lex* l = calloc(1, sizeof(Lex));

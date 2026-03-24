@@ -6,8 +6,6 @@
 
 #define MAX_UNICODE 0x10FFFF
 
-// --- ReRange ---
-
 ReRange* re_range_new(void) { return calloc(1, sizeof(ReRange)); }
 
 void re_range_del(ReRange* range) {
@@ -22,7 +20,6 @@ void re_range_add(ReRange* range, int32_t start_cp, int32_t end_cp) {
   assert(start_cp <= end_cp);
   assert(start_cp >= 0 && end_cp <= MAX_UNICODE);
 
-  // find first interval that overlaps or is adjacent (iv.end >= start_cp - 1)
   int32_t lo = 0, hi = range->len;
   while (lo < hi) {
     int32_t mid = lo + (hi - lo) / 2;
@@ -32,17 +29,13 @@ void re_range_add(ReRange* range, int32_t start_cp, int32_t end_cp) {
       hi = mid;
     }
   }
-  // lo = first interval that could merge
-
-  // find last interval that overlaps or is adjacent (iv.start <= end_cp + 1)
   int32_t first = lo;
-  int32_t last = first; // exclusive
+  int32_t last = first;
   while (last < range->len && range->ivs[last].start <= end_cp + 1) {
     last++;
   }
 
   if (first == last) {
-    // no overlap, insert new interval at position first
     if (range->len == range->cap) {
       range->cap = range->cap ? range->cap * 2 : 8;
       range->ivs = realloc(range->ivs, (size_t)range->cap * sizeof(ReInterval));
@@ -51,7 +44,6 @@ void re_range_add(ReRange* range, int32_t start_cp, int32_t end_cp) {
     range->ivs[first] = (ReInterval){start_cp, end_cp};
     range->len++;
   } else {
-    // merge [first, last) into one interval
     int32_t merged_start = start_cp < range->ivs[first].start ? start_cp : range->ivs[first].start;
     int32_t merged_end = end_cp > range->ivs[last - 1].end ? end_cp : range->ivs[last - 1].end;
     range->ivs[first] = (ReInterval){merged_start, merged_end};
@@ -64,7 +56,6 @@ void re_range_add(ReRange* range, int32_t start_cp, int32_t end_cp) {
 }
 
 void re_range_neg(ReRange* range) {
-  // collect gaps in [0, MAX_UNICODE]
   int32_t gap_cap = range->len + 1;
   ReInterval* gaps = malloc((size_t)gap_cap * sizeof(ReInterval));
   int32_t ngaps = 0;
@@ -85,8 +76,6 @@ void re_range_neg(ReRange* range) {
   range->len = ngaps;
   range->cap = gap_cap;
 }
-
-// --- Re builder ---
 
 typedef struct {
   int32_t start_state;

@@ -6,8 +6,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-// --- NFA transition ---
-
 typedef struct {
   int32_t from;
   int32_t to;
@@ -22,8 +20,6 @@ typedef struct {
   int32_t to;
 } EpsTrans;
 
-// --- DFA state (after determinization) ---
-
 typedef struct {
   Bitset* nfa_states;
 } DfaState;
@@ -37,8 +33,6 @@ typedef struct {
   int32_t line;
   int32_t col;
 } DfaTrans;
-
-// --- Aut ---
 
 struct Aut {
   const char* function_name;
@@ -138,18 +132,14 @@ void aut_action(Aut* a, int32_t state, int32_t action_id) {
     memset(a->state_actions + a->state_actions_cap, 0, (size_t)(new_cap - a->state_actions_cap) * sizeof(int32_t));
     a->state_actions_cap = new_cap;
   }
-  // MIN-RULE: keep the smallest non-zero action_id
   if (a->state_actions[state] == 0 || action_id < a->state_actions[state]) {
     a->state_actions[state] = action_id;
   }
 }
 
-// --- Epsilon closure ---
-// Returns the closure bitset and writes the min non-zero action_id from states in the closure.
-
 static Bitset* _epsilon_closure(Bitset* states, EpsTrans* eps, int neps, int nstates, int32_t* sa, int32_t sa_n,
                                 int32_t* out_action) {
-  Bitset* result = bitset_or(states, states); // copy
+  Bitset* result = bitset_or(states, states);
   int changed = 1;
   while (changed) {
     changed = 0;
@@ -176,26 +166,20 @@ static Bitset* _epsilon_closure(Bitset* states, EpsTrans* eps, int neps, int nst
   return result;
 }
 
-// --- Interval splitting for subset construction ---
-
 static int _cmp_int32(const void* a, const void* b) {
   int32_t x = *(const int32_t*)a;
   int32_t y = *(const int32_t*)b;
   return (x > y) - (x < y);
 }
 
-// --- Subset construction ---
-
 static void _determinize(Aut* a, Bitset* initial, NfaTrans* nfa, int nnfa, EpsTrans* eps, int neps, int nstates,
                          int32_t* sa, int32_t sa_n) {
-  // Clear existing DFA
   for (int i = 0; i < a->dfa_nstates; i++) {
     bitset_del(a->dfa_states[i].nfa_states);
   }
   a->dfa_nstates = 0;
   a->dfa_ntrans = 0;
 
-  // DFA state 0 = epsilon closure of initial
   Bitset* start = _epsilon_closure(initial, eps, neps, nstates, sa, sa_n, NULL);
 
   if (a->dfa_nstates == a->dfa_states_cap) {
@@ -204,7 +188,6 @@ static void _determinize(Aut* a, Bitset* initial, NfaTrans* nfa, int nnfa, EpsTr
   }
   a->dfa_states[a->dfa_nstates++] = (DfaState){.nfa_states = start};
 
-  // Collect all split points from NFA transitions
   int32_t* splits = NULL;
   int nsplits = 0;
   int splits_cap = 0;
@@ -218,7 +201,6 @@ static void _determinize(Aut* a, Bitset* initial, NfaTrans* nfa, int nnfa, EpsTr
     splits[nsplits++] = nfa[i].cp_end + 1;
   }
   qsort(splits, (size_t)nsplits, sizeof(int32_t), _cmp_int32);
-  // Deduplicate
   int dedup = 0;
   for (int i = 0; i < nsplits; i++) {
     if (dedup == 0 || splits[dedup - 1] != splits[i]) {
@@ -227,7 +209,6 @@ static void _determinize(Aut* a, Bitset* initial, NfaTrans* nfa, int nnfa, EpsTr
   }
   nsplits = dedup;
 
-  // Worklist
   int worklist_head = 0;
   while (worklist_head < a->dfa_nstates) {
     int cur_dfa = worklist_head++;
@@ -237,7 +218,6 @@ static void _determinize(Aut* a, Bitset* initial, NfaTrans* nfa, int nnfa, EpsTr
       int32_t lo = splits[si];
       int32_t hi = splits[si + 1] - 1;
 
-      // Find all NFA transitions that fire on any codepoint in [lo, hi]
       Bitset* target = bitset_new();
       int32_t best_line = 0, best_col = 0;
       int has_line = 0;
@@ -265,7 +245,6 @@ static void _determinize(Aut* a, Bitset* initial, NfaTrans* nfa, int nnfa, EpsTr
       Bitset* closed = _epsilon_closure(target, eps, neps, nstates, sa, sa_n, &action);
       bitset_del(target);
 
-      // Find or create DFA state for closed
       int found = -1;
       for (int d = 0; d < a->dfa_nstates; d++) {
         if (bitset_equal(a->dfa_states[d].nfa_states, closed)) {
@@ -284,7 +263,6 @@ static void _determinize(Aut* a, Bitset* initial, NfaTrans* nfa, int nnfa, EpsTr
         bitset_del(closed);
       }
 
-      // Add DFA transition
       if (a->dfa_ntrans == a->dfa_trans_cap) {
         a->dfa_trans_cap = a->dfa_trans_cap ? a->dfa_trans_cap * 2 : 64;
         a->dfa_trans = realloc(a->dfa_trans, (size_t)a->dfa_trans_cap * sizeof(DfaTrans));
@@ -304,8 +282,6 @@ static void _determinize(Aut* a, Bitset* initial, NfaTrans* nfa, int nnfa, EpsTr
   free(splits);
 }
 
-// --- Simple determinization for when optimize is not called ---
-
 static void _simple_determinize(Aut* a) {
   int nstates = a->max_state + 1;
   Bitset* init = bitset_new();
@@ -315,18 +291,12 @@ static void _simple_determinize(Aut* a) {
   bitset_del(init);
 }
 
-// --- Partition refinement (Hopcroft-style) minimization ---
-// Determinize first, then merge equivalent DFA states.
-// Two states are equivalent if they have the same transitions
-// (same target partition and same action_id) for every codepoint interval.
-
 void aut_optimize(Aut* a) {
   if (a->max_state < 0) {
     a->optimized = 1;
     return;
   }
 
-  // First determinize the NFA into a DFA
   _simple_determinize(a);
 
   int n = a->dfa_nstates;
@@ -335,7 +305,6 @@ void aut_optimize(Aut* a) {
     return;
   }
 
-  // Collect all split points from DFA transitions
   int32_t* splits = NULL;
   int nsplits = 0;
   int splits_cap = 0;
@@ -357,8 +326,6 @@ void aut_optimize(Aut* a) {
   nsplits = dedup;
   int nintervals = nsplits > 1 ? nsplits - 1 : 0;
 
-  // For each state and interval, precompute (target_state, action_id).
-  // -1 means no transition.
   int32_t* tgt = calloc((size_t)(n * nintervals), sizeof(int32_t));
   int32_t* act = calloc((size_t)(n * nintervals), sizeof(int32_t));
   for (int i = 0; i < n * nintervals; i++) {
@@ -377,13 +344,9 @@ void aut_optimize(Aut* a) {
     }
   }
 
-  // Partition: partition[s] = partition id for state s
   int32_t* partition = calloc((size_t)n, sizeof(int32_t));
   int npartitions = 0;
 
-  // Initial partition: group by action signature (action_ids on all intervals)
-  // Two states with different action vectors must be in different partitions.
-  // Use a simple O(n^2) grouping.
   for (int i = 0; i < n; i++) {
     partition[i] = -1;
   }
@@ -410,12 +373,10 @@ void aut_optimize(Aut* a) {
     npartitions++;
   }
 
-  // Iterative refinement: split partitions where states differ in target partitions
   int changed = 1;
   while (changed) {
     changed = 0;
     for (int p = 0; p < npartitions; p++) {
-      // Collect states in this partition
       int pcount = 0;
       for (int s = 0; s < n; s++) {
         if (partition[s] == p) {
@@ -425,8 +386,6 @@ void aut_optimize(Aut* a) {
       if (pcount <= 1) {
         continue;
       }
-      // Group states by their target-partition vector
-      // Compare each pair; states matching the first state stay, others form new groups
       int first = -1;
       for (int s = 0; s < n; s++) {
         if (partition[s] == p) {
@@ -450,14 +409,11 @@ void aut_optimize(Aut* a) {
           }
         }
         if (differs) {
-          // Find or create a new partition for this signature
-          // Check if any already-split state from this partition has the same signature
           int found_part = -1;
           for (int s2 = first + 1; s2 < s; s2++) {
             if (partition[s2] < p || partition[s2] == p) {
               continue;
             }
-            // s2 was split from p; check if s matches s2
             int match = 1;
             for (int si = 0; si < nintervals; si++) {
               int32_t t1 = tgt[s * nintervals + si];
@@ -485,8 +441,6 @@ void aut_optimize(Aut* a) {
     }
   }
 
-  // Build minimized DFA
-  // Map old state -> representative (smallest state in same partition)
   int32_t* repr = calloc((size_t)n, sizeof(int32_t));
   int32_t* new_id = calloc((size_t)n, sizeof(int32_t));
   for (int i = 0; i < n; i++) {
@@ -499,7 +453,6 @@ void aut_optimize(Aut* a) {
       repr[partition[s]] = s;
     }
   }
-  // Assign new state ids: ensure state 0 maps to new state 0
   int32_t start_repr = repr[partition[0]];
   new_id[start_repr] = new_nstates++;
   for (int p = 0; p < npartitions; p++) {
@@ -508,8 +461,6 @@ void aut_optimize(Aut* a) {
     }
   }
 
-  // Rebuild transitions: for each transition, remap from/to to new ids.
-  // Skip duplicate transitions (same new_from, new_to, cp range, action).
   int new_ntrans = 0;
   DfaTrans* new_trans = malloc((size_t)(a->dfa_ntrans > 0 ? a->dfa_ntrans : 1) * sizeof(DfaTrans));
   for (int t = 0; t < a->dfa_ntrans; t++) {
@@ -517,7 +468,6 @@ void aut_optimize(Aut* a) {
     int old_to = a->dfa_trans[t].to;
     int32_t nf = new_id[repr[partition[old_from]]];
     int32_t nt = new_id[repr[partition[old_to]]];
-    // Only emit from the representative state
     if (repr[partition[old_from]] != old_from) {
       continue;
     }
@@ -532,7 +482,6 @@ void aut_optimize(Aut* a) {
     };
   }
 
-  // Replace DFA states
   for (int i = 0; i < a->dfa_nstates; i++) {
     bitset_del(a->dfa_states[i].nfa_states);
   }
@@ -545,7 +494,6 @@ void aut_optimize(Aut* a) {
     a->dfa_states[i] = (DfaState){.nfa_states = bitset_new()};
   }
 
-  // Replace DFA transitions
   free(a->dfa_trans);
   a->dfa_trans = new_trans;
   a->dfa_ntrans = new_ntrans;
@@ -558,7 +506,6 @@ void aut_optimize(Aut* a) {
   free(act);
   free(splits);
 
-  // Merge adjacent transitions with same (from, to, action_id) and contiguous ranges
   for (int i = 0; i < a->dfa_ntrans; i++) {
     for (int j = i + 1; j < a->dfa_ntrans; j++) {
       if (a->dfa_trans[i].from == a->dfa_trans[j].from && a->dfa_trans[i].to == a->dfa_trans[j].to &&
@@ -582,8 +529,6 @@ int32_t aut_dfa_nstates(Aut* a) {
   return a->dfa_nstates;
 }
 
-// --- IR generation ---
-
 void aut_gen_dfa(Aut* a, IrWriter* w, bool debug_mode) {
   if (!a->optimized) {
     _simple_determinize(a);
@@ -598,7 +543,6 @@ void aut_gen_dfa(Aut* a, IrWriter* w, bool debug_mode) {
   const char* arg_names[] = {"state", "cp"};
   irwriter_define_start(w, a->function_name, ret_ty, 2, arg_types, arg_names);
 
-  // entry: switch on %state
   irwriter_bb(w, "entry");
   irwriter_switch_start(w, "i32", "%state", "dead");
   for (int s = 0; s < a->dfa_nstates; s++) {
@@ -608,13 +552,11 @@ void aut_gen_dfa(Aut* a, IrWriter* w, bool debug_mode) {
   }
   irwriter_switch_end(w);
 
-  // For each DFA state, generate codepoint matching
   for (int s = 0; s < a->dfa_nstates; s++) {
     char state_label[32];
     snprintf(state_label, sizeof(state_label), "s%d", s);
     irwriter_bb(w, state_label);
 
-    // Collect transitions from this state
     int first_trans = -1;
     int ntrans_from = 0;
     for (int t = 0; t < a->dfa_ntrans; t++) {
@@ -728,7 +670,6 @@ void aut_gen_dfa(Aut* a, IrWriter* w, bool debug_mode) {
       }
     }
 
-    // Emit match blocks for all transitions from this state
     for (int t = 0; t < a->dfa_ntrans; t++) {
       if (a->dfa_trans[t].from != s) {
         continue;
@@ -750,7 +691,6 @@ void aut_gen_dfa(Aut* a, IrWriter* w, bool debug_mode) {
       irwriter_ret(w, ret_ty, v1n);
     }
 
-    // Nomatch block
     irwriter_bb(w, nomatch_label);
     char v0n[32];
     irwriter_insertvalue(w, v0n, sizeof(v0n), ret_ty, "undef", "i32", "%state", 0);
@@ -759,7 +699,6 @@ void aut_gen_dfa(Aut* a, IrWriter* w, bool debug_mode) {
     irwriter_ret(w, ret_ty, v1n);
   }
 
-  // Dead state block
   irwriter_bb(w, "dead");
   {
     if (debug_mode) {
