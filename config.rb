@@ -12,6 +12,7 @@ $amalgamates = []
 $dist_headers = []
 $mode_cflags = {}
 
+
 def lib(name, srcs:)
   $libs << { name: name, srcs: srcs }
 end
@@ -30,10 +31,6 @@ end
 
 def dist_header(src, to:)
   $dist_headers << { src: src, to: to }
-end
-
-def exports_file(path)
-  $exports_file = path
 end
 
 def debug(cflags:)
@@ -114,11 +111,6 @@ File.open("build.ninja", "w") do |f|
   f.puts "  description = AR $out"
   f.puts ""
 
-  f.puts "rule localize"
-  f.puts "  command = cp $in $out && nmedit -s $exports $out"
-  f.puts "  description = LOCALIZE $out"
-  f.puts ""
-
   link_flags = EXTRA_CFLAGS.include?("sanitize") ? EXTRA_CFLAGS : ""
   f.puts "rule link"
   f.puts "  command = #{CC} #{link_flags} $in -o $out"
@@ -173,14 +165,7 @@ File.open("build.ninja", "w") do |f|
       obj
     end
     out = "out/lib#{cl[:name]}.a"
-    raw_out = "#{BUILDDIR}/lib#{cl[:name]}_raw.a"
-    f.puts "build #{raw_out}: ar #{all_objs.join(' ')}"
-    if $exports_file
-      f.puts "build #{out}: localize #{raw_out}"
-      f.puts "  exports = #{$exports_file}"
-    else
-      f.puts "build #{out}: ar #{all_objs.join(' ')}"
-    end
+    f.puts "build #{out}: ar #{all_objs.join(' ')}"
     f.puts ""
   end
 
