@@ -124,3 +124,8 @@ if (foo.is.tag1) {
   bar = load_bar(foo.bar);
 }
 ```
+
+# Acceptance criteria
+
+- end-to-end test: create a token list (you can mimic json, for example), use generated code, to parse the list, and produce a memoize table, by the parsed memoize table, we can use the generated `load_xxx()` function to retrieve/drill-down the nodes, and the loading doesn't allocate heap memory at all.
+- resulting memoize tables: assume there are 5 rules in scope A, 6 rules in scope B, resulting memoize tables should have rows 5 and 6 in each, not full row heights each.

@@ -32,13 +32,17 @@ TEST(test_empty_input) {
   PegGenInput input = {0};
   input.rules = darray_new(sizeof(PegRule), 0);
   input.mode = PEG_MODE_NAIVE;
+  input.token_ids = NULL;
+  input.n_tokens = 0;
 
   FILE* hf = fopen("build/debug/test_peg_empty.h", "w");
   FILE* irf = fopen("build/debug/test_peg_empty.ll", "w");
   HeaderWriter* hw = hw_new(hf);
   IrWriter* w = irwriter_new(irf, "x86_64-unknown-linux-gnu");
 
+  irwriter_start(w, "test.c", ".");
   peg_gen(&input, hw, w);
+  irwriter_end(w);
 
   hw_del(hw);
   irwriter_del(w);
@@ -51,6 +55,8 @@ TEST(test_simple_rule_naive) {
   PegGenInput input = {0};
   input.rules = darray_new(sizeof(PegRule), 0);
   input.mode = PEG_MODE_NAIVE;
+  input.token_ids = NULL;
+  input.n_tokens = 0;
 
   PegRule rule = {0};
   rule.name = strdup("expr");
@@ -69,7 +75,9 @@ TEST(test_simple_rule_naive) {
   HeaderWriter* hw = hw_new(hf);
   IrWriter* w = irwriter_new(irf, "x86_64-unknown-linux-gnu");
 
+  irwriter_start(w, "test.c", ".");
   peg_gen(&input, hw, w);
+  irwriter_end(w);
 
   hw_del(hw);
   irwriter_del(w);
@@ -101,6 +109,8 @@ TEST(test_row_shared_mode) {
   PegGenInput input = {0};
   input.rules = darray_new(sizeof(PegRule), 0);
   input.mode = PEG_MODE_ROW_SHARED;
+  input.token_ids = NULL;
+  input.n_tokens = 0;
 
   PegRule r1 = {0};
   r1.name = strdup("a");
@@ -127,7 +137,9 @@ TEST(test_row_shared_mode) {
   HeaderWriter* hw = hw_new(hf);
   IrWriter* w = irwriter_new(irf, "x86_64-unknown-linux-gnu");
 
+  irwriter_start(w, "test.c", ".");
   peg_gen(&input, hw, w);
+  irwriter_end(w);
 
   hw_del(hw);
   irwriter_del(w);

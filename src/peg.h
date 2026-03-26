@@ -28,7 +28,7 @@ struct PegUnit {
 typedef struct {
   char* name;  // (owned)
   PegUnit seq;
-  char* scope; // (owned, may be NULL)
+  char* scope; // (owned, may be NULL) - if NULL, uses "main"
 } PegRule;
 
 typedef enum {
@@ -37,8 +37,10 @@ typedef enum {
 } PegGenMode;
 
 typedef struct {
-  PegRule* rules; // darray
+  PegRule* rules;
   PegGenMode mode;
+  int32_t* token_ids;
+  int32_t n_tokens;
 } PegGenInput;
 
 void peg_gen(PegGenInput* input, HeaderWriter* hw, IrWriter* w);
