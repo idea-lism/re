@@ -4,11 +4,11 @@ src/peg.c is a packrat parsing generator.
 
 It iterates parsed PEG structure, utilize src/re.h to generate code.
 
+It assigns rule ids for each scope.
+
 It provides 2 generating options: naive & row_shared, so we can benchmark.
 
-# `naive`
-
-### Analyze
+### Rule id analysis
 
 We gather rule closures by scopes first.
 
@@ -25,6 +25,8 @@ struct PegClosure {
 
 Rule_id minification
 - in each scope we gather a set of rules, and number them (starting from 1)
+
+# `naive`
 
 ### Runtime Table
 
@@ -88,9 +90,11 @@ For performance of generated code, same-group bitset should be segmented by 32. 
 
 # Code gen
 
-- llvm IR in the same module as vpa
+- llvm IR to handle the PEG parsing, in the same module as vpa. See also [peg_ir.md](peg_ir.md) for isolation of concerns.
 - packrat parsing: a chunk-allocated parsing table
 - when vpa pops, we know how many columns the table needs and allocate the chunk and invoke the corresponding peg parser on the table segment
+- util functions like memoize table alloc, should be in C header, write with header_writer
+- AST node management should also be in the C header
 
 # Parse tree representation
 

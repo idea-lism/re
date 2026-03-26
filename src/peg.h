@@ -31,8 +31,14 @@ typedef struct {
   char* scope; // (owned, may be NULL)
 } PegRule;
 
+typedef enum {
+  PEG_MODE_NAIVE,
+  PEG_MODE_ROW_SHARED,
+} PegGenMode;
+
 typedef struct {
   PegRule* rules; // darray
+  PegGenMode mode;
 } PegGenInput;
 
 void peg_gen(PegGenInput* input, HeaderWriter* hw, IrWriter* w);

@@ -71,16 +71,23 @@ NINJA
 
 $extra_defaults << "#{bd}/test_coloring"
 
-test_parse_new_srcs = %w[test/test_parse.c src/parse.c src/token_chunk.c src/vpa.c src/peg.c src/header_writer.c]
+ninja_raw "build #{bd}/test/test_peg.o: cc_test test/test_peg.c\n"
+ninja_raw <<~NINJA
+build #{bd}/test_peg: link #{bd}/test/test_peg.o #{bd}/src/peg.o #{bd}/src/peg_ir.o #{bd}/src/header_writer.o #{bd}/src/irwriter.o #{bd}/src/bitset.o #{bd}/src/darray.o #{bd}/src/coloring.o #{bd}/src/graph.o build/kissat/build/libkissat.a
+NINJA
+
+$extra_defaults << "#{bd}/test_peg"
+
+test_parse_new_srcs = %w[test/test_parse.c src/parse.c src/token_chunk.c src/vpa.c src/peg.c src/peg_ir.c src/header_writer.c]
 test_parse_new_srcs.each do |src|
   obj = "#{bd}/#{src.sub(/\.c$/, '.o')}"
   rule = src.start_with?("test/") ? "cc_test" : "cc"
   ninja_raw "build #{obj}: #{rule} #{src}\n"
 end
 
-test_parse_all_srcs = %w[test/test_parse.c test/compat.c src/parse.c src/re_ast.c src/token_chunk.c src/vpa.c src/peg.c src/header_writer.c src/re.c src/aut.c src/irwriter.c src/bitset.c src/darray.c]
+test_parse_all_srcs = %w[test/test_parse.c test/compat.c src/parse.c src/re_ast.c src/token_chunk.c src/vpa.c src/peg.c src/peg_ir.c src/header_writer.c src/re.c src/aut.c src/irwriter.c src/bitset.c src/darray.c src/coloring.c src/graph.c]
 test_parse_objs = test_parse_all_srcs.map { |s| "#{bd}/#{s.sub(/\.c$/, '.o')}" }
-test_parse_all = (test_parse_objs + ["#{bd}/nest_lex.o", "#{bd}/libustr.a"]).join(" ")
+test_parse_all = (test_parse_objs + ["#{bd}/nest_lex.o", "#{bd}/libustr.a", "build/kissat/build/libkissat.a"]).join(" ")
 
 ninja_raw <<~NINJA
 build #{bd}/test_parse: link #{test_parse_all}
