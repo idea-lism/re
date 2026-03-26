@@ -44,6 +44,10 @@ def release(cflags:)
   $mode_cflags["release"] = cflags
 end
 
+def coverage(cflags:)
+  $mode_cflags["coverage"] = cflags
+end
+
 def ninja_raw(text)
   $extra_ninja += text + "\n"
 end
@@ -118,7 +122,7 @@ File.open("build.ninja", "w") do |f|
   f.puts "  description = AR $out"
   f.puts ""
 
-  link_flags = EXTRA_CFLAGS.include?("sanitize") ? EXTRA_CFLAGS : ""
+  link_flags = (EXTRA_CFLAGS.include?("sanitize") || EXTRA_CFLAGS.include?("coverage")) ? EXTRA_CFLAGS : ""
   f.puts "rule link"
   f.puts "  command = #{CC} #{link_flags} $in -o $out"
   f.puts "  description = LINK $out"

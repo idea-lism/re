@@ -39,8 +39,9 @@ amalgamate input: "src/re_rt.h.in",
   output: "out/re_rt.h",
   include_dirs: %w[src]
 
-debug   cflags: "-O0 -g -fsanitize=address -fsanitize=undefined"
-release cflags: "-O2"
+debug    cflags: "-O0 -g -fsanitize=address -fsanitize=undefined"
+release  cflags: "-O2"
+coverage cflags: "-O0 -g -fprofile-instr-generate -fcoverage-mapping"
 
 # parse_gen -> nest_lex.ll -> nest_lex.o -> link into test_parse
 llvm_cc = RUBY_PLATFORM =~ /darwin/ ? "xcrun clang" : (ENV["CC"] || "clang")

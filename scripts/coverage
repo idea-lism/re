@@ -1,0 +1,36 @@
+#!/bin/sh
+set -e
+
+ruby config.rb coverage
+ninja
+
+rm -rf build/coverage/profraw build/coverage/html
+mkdir -p build/coverage/profraw
+
+export LLVM_PROFILE_FILE="build/coverage/profraw/%p.profraw"
+
+for t in build/coverage/test_*; do
+  [ -x "$t" ] || continue
+  echo "--- $t ---"
+  "$t"
+done
+
+llvm_profdata="llvm-profdata"
+llvm_cov="llvm-cov"
+if [ "$(uname)" = "Darwin" ]; then
+  llvm_profdata="xcrun llvm-profdata"
+  llvm_cov="xcrun llvm-cov"
+fi
+
+$llvm_profdata merge -sparse build/coverage/profraw/*.profraw -o build/coverage/coverage.profdata
+
+objects=""
+for t in build/coverage/test_*; do
+  [ -x "$t" ] || continue
+  objects="$objects -object $t"
+done
+
+$llvm_cov show $objects -instr-profile=build/coverage/coverage.profdata -format=html -output-dir=build/coverage/html
+
+echo ""
+echo "Coverage report generated: build/coverage/html/index.html"
