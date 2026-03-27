@@ -101,3 +101,15 @@ build #{bd}/test_parse: link #{test_parse_all}
 NINJA
 
 $extra_defaults << "#{bd}/test_parse"
+
+ninja_raw "build #{bd}/src/nest.o: cc src/nest.c\n"
+
+nest_srcs = %w[src/nest.c src/parse.c src/re_ast.c src/token_chunk.c src/vpa.c src/peg.c src/peg_ir.c src/header_writer.c src/re.c src/aut.c src/irwriter.c src/bitset.c src/darray.c src/coloring.c src/graph.c]
+nest_objs = nest_srcs.map { |s| "#{bd}/#{s.sub(/\.c$/, '.o')}" }
+nest_all = (nest_objs + ["#{bd}/nest_lex.o", "#{bd}/libustr.a", "build/kissat/build/libkissat.a"]).join(" ")
+
+ninja_raw <<~NINJA
+build #{bd}/nest: link #{nest_all}
+NINJA
+
+$extra_defaults << "#{bd}/nest"

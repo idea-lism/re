@@ -103,4 +103,8 @@ enum {
   SCOPE_COUNT
 };
 
+#include "header_writer.h"
+#include "irwriter.h"
 #include "re_ast.h"
+
+void parse_nest(const char* src, HeaderWriter* header_writer, IrWriter* ir_writer);

@@ -636,6 +636,7 @@ static void _gen_runtime_types(HeaderWriter* hw) {
   hw_field(hw, "ChunkTable", "chunk_table");
   hw_field(hw, "TokenChunk*", "root");
   hw_field(hw, "TokenChunk*", "current");
+  hw_field(hw, "TokenChunk*", "parse_chunk");
   hw_field(hw, "int32_t", "scope_stack[64]");
   hw_field(hw, "int32_t", "sp");
   hw_struct_end(hw);
@@ -679,6 +680,7 @@ static void _gen_runtime_helpers(HeaderWriter* hw) {
              "  tt->token_end_map = (uint64_t*)calloc(map_words, sizeof(uint64_t));\n"
              "  tt->root = tt_alloc_chunk(tt, 0);\n"
              "  tt->current = tt->root;\n"
+             "  tt->parse_chunk = NULL;\n"
              "  tt->sp = 0;\n"
              "  tt->scope_stack[0] = 0;\n"
              "  return tt;\n"
@@ -703,15 +705,71 @@ static void _gen_runtime_helpers(HeaderWriter* hw) {
              "  tt->token_end_map[cp_off / 64] |= (uint64_t)1 << (cp_off % 64);\n"
              "}\n\n");
 
-  hw_comment(hw, "Runtime callbacks (implement these to customize behavior)");
+  hw_comment(hw, "Runtime hooks");
+  hw_raw(hw, "int32_t vpa_rt_read_cp(void* src, int32_t cp_off);\n");
+  hw_raw(hw, "\n");
+  hw_raw(hw, "#ifndef VPA_IMPLEMENTATION\n");
   hw_raw(hw, "void vpa_rt_emit_token(void* tt, int32_t tok_id, int32_t cp_start, int32_t cp_size);\n");
   hw_raw(hw, "void vpa_rt_push_scope(void* tt, int32_t scope_id);\n");
   hw_raw(hw, "void vpa_rt_pop_scope(void* tt);\n");
-  hw_raw(hw, "int32_t vpa_rt_read_cp(void* src, int32_t cp_off);\n");
-  hw_raw(hw, "int32_t vpa_rt_get_scope(void* tt);\n\n");
+  hw_raw(hw, "int32_t vpa_rt_get_scope(void* tt);\n");
   hw_raw(hw, "int32_t vpa_rt_current_chunk_len(void* tt);\n");
   hw_raw(hw, "void vpa_rt_begin_parse(void* tt);\n");
-  hw_raw(hw, "void vpa_rt_end_parse(void* tt);\n\n");
+  hw_raw(hw, "void vpa_rt_end_parse(void* tt);\n");
+  hw_raw(hw, "int32_t match_tok(int32_t tok_id, int32_t col);\n");
+  hw_raw(hw, "#else\n");
+  hw_raw(hw, "static TokenTree* _vpa_parse_tt = NULL;\n\n");
+  hw_raw(hw, "void vpa_rt_emit_token(void* tt, int32_t tok_id, int32_t cp_start, int32_t cp_size) {\n"
+             "  TokenTree* tree = (TokenTree*)tt;\n"
+             "  if (!tree || !tree->current) return;\n"
+             "  tt_add_token(tree->current, tok_id, cp_start, cp_size);\n"
+             "  if (cp_size > 0) {\n"
+             "    tt_mark_token_end(tree, cp_start + cp_size - 1);\n"
+             "  }\n"
+             "}\n\n");
+  hw_raw(hw, "void vpa_rt_push_scope(void* tt, int32_t scope_id) {\n"
+             "  TokenTree* tree = (TokenTree*)tt;\n"
+             "  if (!tree || tree->sp >= 63) return;\n"
+             "  TokenChunk* child = tt_alloc_chunk(tree, scope_id);\n"
+             "  tree->scope_stack[++tree->sp] = child->chunk_id;\n"
+             "  tree->current = child;\n"
+             "}\n\n");
+  hw_raw(hw, "void vpa_rt_pop_scope(void* tt) {\n"
+             "  TokenTree* tree = (TokenTree*)tt;\n"
+             "  if (!tree || tree->sp <= 0) return;\n"
+             "  tree->sp--;\n"
+             "  tree->current = &tree->chunk_table.chunks[tree->scope_stack[tree->sp]];\n"
+             "}\n\n");
+  hw_raw(hw, "int32_t vpa_rt_get_scope(void* tt) {\n"
+             "  TokenTree* tree = (TokenTree*)tt;\n"
+             "  return (tree && tree->current) ? tree->current->scope_id : 0;\n"
+             "}\n\n");
+  hw_raw(hw, "int32_t vpa_rt_current_chunk_len(void* tt) {\n"
+             "  TokenTree* tree = (TokenTree*)tt;\n"
+             "  return (tree && tree->current) ? tree->current->count : 0;\n"
+             "}\n\n");
+  hw_raw(hw, "void vpa_rt_begin_parse(void* tt) {\n"
+             "  TokenTree* tree = (TokenTree*)tt;\n"
+             "  _vpa_parse_tt = tree;\n"
+             "  if (tree) {\n"
+             "    tree->parse_chunk = tree->current;\n"
+             "  }\n"
+             "}\n\n");
+  hw_raw(hw, "void vpa_rt_end_parse(void* tt) {\n"
+             "  TokenTree* tree = (TokenTree*)tt;\n"
+             "  if (tree) {\n"
+             "    tree->parse_chunk = NULL;\n"
+             "  }\n"
+             "  if (_vpa_parse_tt == tree) {\n"
+             "    _vpa_parse_tt = NULL;\n"
+             "  }\n"
+             "}\n\n");
+  hw_raw(hw, "int32_t match_tok(int32_t tok_id, int32_t col) {\n"
+             "  if (!_vpa_parse_tt || !_vpa_parse_tt->parse_chunk) return -1;\n"
+             "  if (col < 0 || col >= _vpa_parse_tt->parse_chunk->count) return -1;\n"
+             "  return _vpa_parse_tt->parse_chunk->tokens[col].tok_id == tok_id ? 1 : -1;\n"
+             "}\n");
+  hw_raw(hw, "#endif\n\n");
 }
 
 static void _gen_state_matcher_header(StateDecl* states, HeaderWriter* hw) {

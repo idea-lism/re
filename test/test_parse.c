@@ -201,6 +201,54 @@ TEST(test_vpa_ir_compiles) {
   free(ir_buf);
 }
 
+TEST(test_generated_runtime_header_compiles) {
+  const char* src = "[[vpa]]\n"
+                    "main = {\n"
+                    "  /x/ @tok_a\n"
+                    "}\n"
+                    "[[peg]]\n"
+                    "main = @tok_a\n";
+  char* hdr_buf = NULL;
+  size_t hdr_sz = 0;
+  char* ir_buf = NULL;
+  size_t ir_sz = 0;
+  _gen_output(src, &hdr_buf, &hdr_sz, &ir_buf, &ir_sz);
+
+  char hdr_path[256];
+  char c_path[256];
+  char obj_path[256];
+  snprintf(hdr_path, sizeof(hdr_path), "%s/test_generated_runtime.h", BUILD_DIR);
+  snprintf(c_path, sizeof(c_path), "%s/test_generated_runtime.c", BUILD_DIR);
+  snprintf(obj_path, sizeof(obj_path), "%s/test_generated_runtime.o", BUILD_DIR);
+
+  FILE* hf = fopen(hdr_path, "w");
+  assert(hf);
+  fputs(hdr_buf, hf);
+  fclose(hf);
+
+  FILE* cf = fopen(c_path, "w");
+  assert(cf);
+  fprintf(cf, "#define VPA_IMPLEMENTATION\n");
+  fprintf(cf, "#include \"test_generated_runtime.h\"\n");
+  fprintf(cf, "int32_t vpa_rt_read_cp(void* src, int32_t cp_off) { (void)src; (void)cp_off; return -2; }\n");
+  fprintf(cf, "int main(void) { return 0; }\n");
+  fclose(cf);
+
+  char cmd[768];
+  snprintf(cmd, sizeof(cmd), "%s -c -o %s %s 2>&1", compat_llvm_cc(), obj_path, c_path);
+  int rc = system(cmd);
+  if (rc != 0) {
+    fprintf(stderr, "clang compilation failed for %s\n", c_path);
+  }
+  assert(rc == 0);
+
+  remove(obj_path);
+  remove(c_path);
+  remove(hdr_path);
+  free(hdr_buf);
+  free(ir_buf);
+}
+
 // --- Token set validation tests ---
 
 TEST(test_validate_peg_uses_missing_token) {
@@ -287,6 +335,7 @@ int main(void) {
   RUN(test_parse_basic);
   RUN(test_scoped);
   RUN(test_vpa_ir_compiles);
+  RUN(test_generated_runtime_header_compiles);
   RUN(test_validate_peg_uses_missing_token);
   RUN(test_validate_vpa_emits_unused_token);
   RUN(test_validate_matching_sets);
