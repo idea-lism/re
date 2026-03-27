@@ -1,6 +1,6 @@
-#include "../src/re_ast.h"
-#include "../src/parse.h"
 #include "../src/darray.h"
+#include "../src/parse.h"
+#include "../src/re_ast.h"
 
 #include <assert.h>
 #include <stdint.h>
@@ -38,9 +38,7 @@ TEST(test_free_with_children) {
 
 // --- re_ast_clone ---
 
-TEST(test_clone_null) {
-  assert(re_ast_clone(NULL) == NULL);
-}
+TEST(test_clone_null) { assert(re_ast_clone(NULL) == NULL); }
 
 TEST(test_clone_leaf) {
   ReAstNode src = {.kind = RE_AST_CHAR, .codepoint = 42};
@@ -349,13 +347,13 @@ TEST(test_re_complex) {
   // a(b|c)+
   const char* src = "a(b|c)+";
   ReToken tokens[] = {
-      {TOK_CHAR, 0, 1},       // a
-      {TOK_RE_LPAREN, 1, 2},  // (
-      {TOK_CHAR, 2, 3},       // b
-      {TOK_RE_ALT, 3, 4},     // |
-      {TOK_CHAR, 4, 5},       // c
-      {TOK_RE_RPAREN, 5, 6},  // )
-      {TOK_RE_PLUS, 6, 7},    // +
+      {TOK_CHAR, 0, 1},      // a
+      {TOK_RE_LPAREN, 1, 2}, // (
+      {TOK_CHAR, 2, 3},      // b
+      {TOK_RE_ALT, 3, 4},    // |
+      {TOK_CHAR, 4, 5},      // c
+      {TOK_RE_RPAREN, 5, 6}, // )
+      {TOK_RE_PLUS, 6, 7},   // +
   };
   ReAstNode* ast = re_ast_build_re(src, tokens, 7, NULL, 0);
   assert(ast->kind == RE_AST_SEQ);

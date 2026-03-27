@@ -83,13 +83,13 @@ void aut_transition(Aut* a, TransitionDef tdef, DebugInfo di) {
     a->nfa_trans = darray_new(sizeof(NfaTrans), 0);
   }
   darray_push(a->nfa_trans, ((NfaTrans){
-                                 .from = tdef.from_state_id,
-                                 .to = tdef.to_state_id,
-                                 .cp_start = tdef.cp_start,
-                                 .cp_end = tdef.cp_end_inclusive,
-                                 .line = di.source_file_line,
-                                 .col = di.source_file_col,
-                             }));
+                                .from = tdef.from_state_id,
+                                .to = tdef.to_state_id,
+                                .cp_start = tdef.cp_start,
+                                .cp_end = tdef.cp_end_inclusive,
+                                .line = di.source_file_line,
+                                .col = di.source_file_col,
+                            }));
   _track_state(a, tdef.from_state_id);
   _track_state(a, tdef.to_state_id);
 }
@@ -240,14 +240,14 @@ static void _determinize(Aut* a, Bitset* initial, NfaTrans* nfa, int nnfa, EpsTr
       }
 
       darray_push(a->dfa_trans, ((DfaTrans){
-                                     .from = cur_dfa,
-                                     .to = found,
-                                     .cp_start = lo,
-                                     .cp_end = hi,
-                                     .action_id = action,
-                                     .line = best_line,
-                                     .col = best_col,
-                                 }));
+                                    .from = cur_dfa,
+                                    .to = found,
+                                    .cp_start = lo,
+                                    .cp_end = hi,
+                                    .action_id = action,
+                                    .line = best_line,
+                                    .col = best_col,
+                                }));
     }
   }
 

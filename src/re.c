@@ -97,10 +97,10 @@ static GroupFrame* _top(Re* re) {
 
 static void _push_frame(Re* re, int32_t start, int32_t cur) {
   darray_push(re->stack, ((GroupFrame){
-                              .start_state = start,
-                              .cur_state = cur,
-                              .branch_ends = NULL,
-                          }));
+                             .start_state = start,
+                             .cur_state = cur,
+                             .branch_ends = NULL,
+                         }));
 }
 
 static void _save_branch_end(GroupFrame* f, int32_t state) {
