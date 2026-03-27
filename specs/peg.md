@@ -26,7 +26,7 @@ struct PegClosure {
 Rule_id minification
 - in each scope we gather a set of rules, and number them (starting from 1)
 
-# `naive`
+# `naive` mode
 
 ### Runtime Table
 
@@ -47,7 +47,7 @@ Each slot:
 - if rule is branch rule, store the chosen branch id.
 - if rule is chainable (a+), store the offset to next token.
 
-# `row_shared`
+# `row_shared` mode
 
 Rule IDs can share a slot storage when 2 rules do not co-exist at one matching position.
 
@@ -75,11 +75,11 @@ After graph coloring, we have shared-groups (sets of peg rule ids).
 Then we use reverse-bitset representation to denote what each slot means:
 - the bit map co-lives with cache slots in one single struct:
   - `struct Col { int32_t bits[nseg_groups]; int32_t slots[slot_size]; }`
-- init state: set all bits & slots to 1 `memset(peg_table, table_bytes, -1)`
+- init state: set all bits & slots to 1 `memset(peg_table, -1 /* 0xFF */, table_bytes)`
 - for a rule, we know:
   - the segment it belongs to: `segment_bits = bits[segment_index] & segment_mask`
   - check the bit `segment_bits & rule_bit`
-    - if rule bit is `1`, it may match, so we try some little more options:
+    - if rule bit is `1`, it may match, then we:
       - check the slot, if not `-1`, then the rule matches.
       - else do the real parse and write cache:
         - if rule matches, set all other bits in the segment to 0 (remember exclusive right?) and set slot.
@@ -101,7 +101,7 @@ For performance of generated code, same-group bitset should be segmented by 32. 
 - have the full memoize table in order to construct the parse tree
   - there are 2 kinds of types: 
     - a universal reference `PegRef { table, col, next_col }`
-    - rule-specific nodes `FooNode { struct { bool branch1: 1; bool branch2: 2; } is; PegRef child0; PegRef child1; ... }`.
+    - rule-specific nodes `FooNode { struct { bool branch1: 1; bool branch2: 1; } is; PegRef child0; PegRef child1; ... }`.
   - fields are reference to a table position, with `is` field to tell the branch
   - by the `is` user can call a helper function defined in generated header, to extract child node from the memoize table
 
