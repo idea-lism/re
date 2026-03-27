@@ -64,3 +64,5 @@ int32_t irwriter_sext(IrWriter* w, char* buf, int32_t buf_size, const char* from
                       const char* to_ty);
 
 void irwriter_type_def(IrWriter* w, const char* name, const char* body);
+
+void irwriter_raw(IrWriter* w, const char* text);

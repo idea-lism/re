@@ -1,6 +1,4 @@
-To help generate the PEG IR easier, create `peg_ir_xxx` helpers in src/peg_ir.c, which wraps irwriter.
-
-The PEG IR is a thin abstraction over LLVM IR. Each opcode maps directly to a small sequence of LLVM instructions. The goal is to lessen the burden of IR generating in src/peg.c — PEG constructs call these helpers instead of emitting raw LLVM IR.
+The PEG IR helpers in src/peg_ir.c wrap irwriter for multi-instruction sequences. Single LLVM instructions (add, icmp, select, phi, br) are emitted directly via irwriter.
 
 ## Opcodes
 
@@ -9,29 +7,29 @@ All values are `i32`. Convention: negative return = failure.
 | Opcode | LLVM IR expansion | Semantics |
 |---|---|---|
 | `tok(token_id, col)` | `call i32 @match_tok(i32 %token_id, i32 %col)` | Match token at `col`. Returns match length (≥0) or negative on failure. |
-| `call(rule_id, col)` | `call i32 @rule_{id}(ptr %table, i32 %col)` | Call rule function (which checks memo table internally). Returns match length or negative. |
+| `call(rule_id, col)` | `sext` + `call i32 @parse_{id}(ptr %table, i64 %col)` | Call rule function (which checks memo table internally). Returns match length or negative. |
 | `memo_get(rule_id, col)` | `getelementptr` + `load i32` from `table->col[%col].slots[%rule_id]` | Read memo slot. Returns cached value or `-1` (uncached). |
 | `memo_set(rule_id, col, val)` | `getelementptr` + `store i32 %val` into `table->col[%col].slots[%rule_id]` | Write memo slot. |
-| `fail_if_neg(val, fail_bb)` | `%cmp = icmp slt i32 %val, 0` / `br i1 %cmp, label %fail_bb, label %cont` | Branch to `fail_bb` if `val < 0`. |
-| `is_neg(val)` | `%cmp = icmp slt i32 %val, 0` | Returns `i1`, true when `val < 0`. |
-| `select(cond, a, b)` | `select i1 %cond, i32 %a, i32 %b` | Conditional value. |
-| `add(a, b)` | `add i32 %a, %b` | Integer add (accumulate match lengths). |
-| `phi(...)` | `phi i32 [%v1, %bb1], [%v2, %bb2], ...` | SSA merge at join point. |
-| `br(bb)` | `br label %bb` | Unconditional branch. |
-| `br_cond(cond, then_bb, else_bb)` | `br i1 %cond, label %then_bb, label %else_bb` | Conditional branch. |
-| `const(n)` | `i32 n` | Integer literal. |
 
 ### Backtrack stack (ordered choice only)
 
 | Opcode | Semantics |
 |---|---|
-| `save(col)` | Push parser state (column position) onto backtrack stack. |
+| `save(col)` | Push column position onto backtrack stack. |
 | `restore()` | Read saved column without popping. Returns the saved `col`. |
-| `discard()` | Drop top of backtrack stack (after successful alternative or after restore). |
+| `discard()` | Drop top of backtrack stack. |
 
-The backtrack stack stores the column position. `save`/`restore`/`discard` replace the old `push`/`peek`/`pop` names to clarify intent.
+The backtrack stack type and operations are emitted as `define internal` functions in the generated LLVM IR, so LLVM can inline them:
 
-The generator emit opcode definitions in LLVM-IR first (local procedures that can be inlined), then emit PEG rule implementations that utilize the functions.
+```llvm
+%BtStack = type { [16 x i32], i32 }  ; { data[16], top }
+
+define internal void @backtrack_push(ptr %stack, i32 %col) { ... }
+define internal i32  @backtrack_restore(ptr %stack)         { ... }
+define internal void @backtrack_pop(ptr %stack)             { ... }
+```
+
+Each rule function allocates `%BtStack` on the LLVM stack and initializes `top = -1`. The `save`/`restore`/`discard` opcodes map to `call @backtrack_push`/`@backtrack_restore`/`@backtrack_pop`.
 
 ### Memo helpers (row_shared mode)
 
@@ -51,7 +49,7 @@ These are used only in `row_shared` mode. In `naive` mode, `memo_get`/`memo_set`
 
 ```
 gen(empty, col, fail):
-  return const(0)
+  return 0
 
 gen(token, col, fail):
   r = tok(token, col)
@@ -69,8 +67,8 @@ gen(Rule, col, fail):
 ```
 gen(a b, col, fail):
   r1 = gen(a, col, fail)
-  r2 = gen(b, add(col, r1), fail)
-  return add(r1, r2)
+  r2 = gen(b, col + r1, fail)
+  return r1 + r2
 ```
 
 ### Ordered choice
@@ -93,6 +91,8 @@ done_bb:
   return result
 ```
 
+For N-ary ordered choice `a / b / c / ...`, the pattern generalizes: one `save` at the start, `restore` + `discard` + `save` at each non-last retry, `restore` + `discard` before the last attempt.
+
 ### Optional (?)
 
 Always succeeds, never branches to fail.
@@ -104,7 +104,7 @@ gen(e?, col, fail):
 miss_bb:
   br(done_bb)
 done_bb:
-  result = phi(r from try_bb, const(0) from miss_bb)
+  result = phi(r from try_bb, 0 from miss_bb)
   return result
 ```
 
@@ -118,8 +118,8 @@ gen(e+, col, fail):
   br(loop_bb)
 loop_bb:
   acc = phi(first from entry_bb, next from body_bb)
-  r = gen(e, add(col, acc), end_bb)
-  next = add(acc, r)
+  r = gen(e, col + acc, end_bb)
+  next = acc + r
   br(loop_bb)
 end_bb:
   return acc
@@ -133,9 +133,9 @@ Same loop as `+`, but starts with zero matches (always succeeds).
 gen(e*, col, fail):
   br(loop_bb)
 loop_bb:
-  acc = phi(const(0) from entry_bb, next from body_bb)
-  r = gen(e, add(col, acc), end_bb)
-  next = add(acc, r)
+  acc = phi(0 from entry_bb, next from body_bb)
+  r = gen(e, col + acc, end_bb)
+  next = acc + r
   br(loop_bb)
 end_bb:
   return acc
@@ -151,9 +151,9 @@ gen(e+<sep>, col, fail):
   br(loop_bb)
 loop_bb:
   acc = phi(first from entry_bb, next from body_bb)
-  sr = gen(sep, add(col, acc), end_bb)
-  er = gen(e, add(add(col, acc), sr), end_bb)
-  next = add(acc, add(sr, er))
+  sr = gen(sep, col + acc, end_bb)
+  er = gen(e, col + acc + sr, end_bb)
+  next = acc + sr + er
   br(loop_bb)
 end_bb:
   return acc
@@ -169,14 +169,14 @@ gen(e*<sep>, col, fail):
   br(loop_bb)
 loop_bb:
   acc = phi(first from entry_bb, next from body_bb)
-  sr = gen(sep, add(col, acc), end_bb)
-  er = gen(e, add(add(col, acc), sr), end_bb)
-  next = add(acc, add(sr, er))
+  sr = gen(sep, col + acc, end_bb)
+  er = gen(e, col + acc + sr, end_bb)
+  next = acc + sr + er
   br(loop_bb)
 empty_bb:
   br(end_bb)
 end_bb:
-  result = phi(acc from loop_bb, const(0) from empty_bb)
+  result = phi(acc from loop_bb, 0 from empty_bb)
   return result
 ```
 

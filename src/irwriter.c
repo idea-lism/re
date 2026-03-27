@@ -418,3 +418,5 @@ int32_t irwriter_sext(IrWriter* w, char* buf, int32_t buf_size, const char* from
 void irwriter_type_def(IrWriter* w, const char* name, const char* body) {
   fprintf(w->out, "%%%s = type %s\n", name, body);
 }
+
+void irwriter_raw(IrWriter* w, const char* text) { fprintf(w->out, "%s", text); }
