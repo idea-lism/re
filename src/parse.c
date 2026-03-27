@@ -1639,6 +1639,12 @@ void parse_nest(const char* src, HeaderWriter* header_writer, IrWriter* ir_write
     goto fail;
   }
 
+  peg_gen(
+      &(PegGenInput){
+          .rules = ps.peg_rules,
+      },
+      header_writer, ir_writer);
+
   vpa_gen(
       &(VpaGenInput){
           .rules = ps.vpa_rules,
@@ -1647,12 +1653,6 @@ void parse_nest(const char* src, HeaderWriter* header_writer, IrWriter* ir_write
           .effects = ps.effects,
           .peg_rules = ps.peg_rules,
           .src = ps.src,
-      },
-      header_writer, ir_writer);
-
-  peg_gen(
-      &(PegGenInput){
-          .rules = ps.peg_rules,
       },
       header_writer, ir_writer);
 

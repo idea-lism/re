@@ -514,8 +514,13 @@ TEST(test_parse_scope_callback) {
   size_t isz = 0;
   _gen(&input, &hdr, &hsz, &ir, &isz);
 
-  assert(strstr(hdr, "void vpa_parse_inner(void* tt);"));
-  assert(strstr(ir, "declare void @vpa_parse_inner(ptr)"));
+  assert(strstr(hdr, "int32_t vpa_rt_current_chunk_len(void* tt);"));
+  assert(strstr(hdr, "void vpa_rt_begin_parse(void* tt);"));
+  assert(strstr(hdr, "void vpa_rt_end_parse(void* tt);"));
+  assert(strstr(ir, "define internal void @vpa_parse_inner(ptr %tt)"));
+  assert(strstr(ir, "call i32 @parse_inner(ptr %table, i32 0)"));
+  assert(strstr(ir, "call void @vpa_rt_begin_parse(ptr %tt)"));
+  assert(strstr(ir, "call void @vpa_rt_end_parse(ptr %tt)"));
   assert(strstr(ir, "call void @vpa_parse_inner(ptr %tt)"));
   assert(strstr(ir, "call void @vpa_rt_pop_scope(ptr %tt)"));
 

@@ -530,6 +530,67 @@ static void _gen_state_matcher_ir_decls(StateDecl* states, IrWriter* w) {
   }
 }
 
+static void _gen_parse_scope_bridges_ir(ActionRegistry* reg, IrWriter* w) {
+  bool has_parse = false;
+  for (int32_t i = 0; i < (int32_t)darray_size(reg->entries); i++) {
+    if (_is_first_parse_scope(reg, i)) {
+      has_parse = true;
+      break;
+    }
+  }
+  if (!has_parse) {
+    return;
+  }
+
+  irwriter_declare(w, "i32", "vpa_rt_current_chunk_len", "ptr");
+  irwriter_declare(w, "void", "vpa_rt_begin_parse", "ptr");
+  irwriter_declare(w, "void", "vpa_rt_end_parse", "ptr");
+  irwriter_declare(w, "ptr", "malloc", "i64");
+  irwriter_declare(w, "void", "free", "ptr");
+  irwriter_raw(w, "declare void @llvm.memset.p0.i64(ptr, i8, i64, i1)\n\n");
+
+  for (int32_t i = 0; i < (int32_t)darray_size(reg->entries); i++) {
+    if (!_is_first_parse_scope(reg, i)) {
+      continue;
+    }
+
+    const char* scope_name = reg->entries[i].parse_scope_name;
+    int32_t helper_len = snprintf(NULL, 0, "vpa_parse_%s", scope_name) + 1;
+    char helper_name[helper_len];
+    _make_parse_scope_symbol(scope_name, helper_name, sizeof(helper_name));
+
+    int32_t parse_len = snprintf(NULL, 0, "parse_%s", scope_name) + 1;
+    char parse_name[parse_len];
+    snprintf(parse_name, sizeof(parse_name), "parse_%s", scope_name);
+
+    int32_t col_type_len = snprintf(NULL, 0, "%%Col.%s", scope_name) + 1;
+    char col_type[col_type_len];
+    snprintf(col_type, sizeof(col_type), "%%Col.%s", scope_name);
+
+    irwriter_rawf(w, "define internal void @%s(ptr %%tt) {\n", helper_name);
+    irwriter_raw(w, "entry:\n");
+    irwriter_raw(w, "  %ncols0 = call i32 @vpa_rt_current_chunk_len(ptr %tt)\n");
+    irwriter_raw(w, "  %ncols1 = add i32 %ncols0, 1\n");
+    irwriter_raw(w, "  %ncols64 = sext i32 %ncols1 to i64\n");
+    irwriter_rawf(w, "  %%elt_end = getelementptr %s, ptr null, i32 1\n", col_type);
+    irwriter_raw(w, "  %elt_size = ptrtoint ptr %elt_end to i64\n");
+    irwriter_raw(w, "  %table_size = mul i64 %ncols64, %elt_size\n");
+    irwriter_raw(w, "  call void @vpa_rt_begin_parse(ptr %tt)\n");
+    irwriter_raw(w, "  %table = call ptr @malloc(i64 %table_size)\n");
+    irwriter_raw(w, "  %table_ok = icmp ne ptr %table, null\n");
+    irwriter_raw(w, "  br i1 %table_ok, label %Lparse_init, label %Lparse_done\n\n");
+    irwriter_raw(w, "Lparse_init:\n");
+    irwriter_raw(w, "  call void @llvm.memset.p0.i64(ptr %table, i8 -1, i64 %table_size, i1 false)\n");
+    irwriter_rawf(w, "  %%parse_len = call i32 @%s(ptr %%table, i32 0)\n", parse_name);
+    irwriter_raw(w, "  call void @free(ptr %table)\n");
+    irwriter_raw(w, "  br label %Lparse_done\n\n");
+    irwriter_raw(w, "Lparse_done:\n");
+    irwriter_raw(w, "  call void @vpa_rt_end_parse(ptr %tt)\n");
+    irwriter_raw(w, "  ret void\n");
+    irwriter_raw(w, "}\n\n");
+  }
+}
+
 // --- Header generation ---
 
 static void _gen_runtime_types(HeaderWriter* hw) {
@@ -648,6 +709,9 @@ static void _gen_runtime_helpers(HeaderWriter* hw) {
   hw_raw(hw, "void vpa_rt_pop_scope(void* tt);\n");
   hw_raw(hw, "int32_t vpa_rt_read_cp(void* src, int32_t cp_off);\n");
   hw_raw(hw, "int32_t vpa_rt_get_scope(void* tt);\n\n");
+  hw_raw(hw, "int32_t vpa_rt_current_chunk_len(void* tt);\n");
+  hw_raw(hw, "void vpa_rt_begin_parse(void* tt);\n");
+  hw_raw(hw, "void vpa_rt_end_parse(void* tt);\n\n");
 }
 
 static void _gen_state_matcher_header(StateDecl* states, HeaderWriter* hw) {
@@ -683,31 +747,6 @@ static void _gen_user_hook_header(ActionRegistry* reg, HeaderWriter* hw) {
     char symbol[sym_len];
     _make_user_hook_symbol(reg->entries[i].user_hook, symbol, sizeof(symbol));
     hw_fmt(hw, "void %s(void* tt, int32_t cp_start, int32_t cp_size);\n", symbol);
-  }
-  hw_blank(hw);
-}
-
-static void _gen_parse_scope_header(ActionRegistry* reg, HeaderWriter* hw) {
-  bool has_parse = false;
-  for (int32_t i = 0; i < (int32_t)darray_size(reg->entries); i++) {
-    if (_is_first_parse_scope(reg, i)) {
-      has_parse = true;
-      break;
-    }
-  }
-  if (!has_parse) {
-    return;
-  }
-
-  hw_comment(hw, "Scope parse callbacks for PEG-mapped pops");
-  for (int32_t i = 0; i < (int32_t)darray_size(reg->entries); i++) {
-    if (!_is_first_parse_scope(reg, i)) {
-      continue;
-    }
-    int32_t sym_len = snprintf(NULL, 0, "vpa_parse_%s", reg->entries[i].parse_scope_name) + 1;
-    char symbol[sym_len];
-    _make_parse_scope_symbol(reg->entries[i].parse_scope_name, symbol, sizeof(symbol));
-    hw_fmt(hw, "void %s(void* tt);\n", symbol);
   }
   hw_blank(hw);
 }
@@ -783,16 +822,6 @@ static void _gen_action_dispatch_ir(ActionRegistry* reg, IrWriter* w) {
     _make_user_hook_symbol(reg->entries[i].user_hook, symbol, sizeof(symbol));
     irwriter_declare(w, "void", symbol, "ptr, i32, i32");
   }
-  for (int32_t i = 0; i < (int32_t)darray_size(reg->entries); i++) {
-    if (!_is_first_parse_scope(reg, i)) {
-      continue;
-    }
-    int32_t sym_len = snprintf(NULL, 0, "vpa_parse_%s", reg->entries[i].parse_scope_name) + 1;
-    char symbol[sym_len];
-    _make_parse_scope_symbol(reg->entries[i].parse_scope_name, symbol, sizeof(symbol));
-    irwriter_declare(w, "void", symbol, "ptr");
-  }
-
   int32_t n = (int32_t)darray_size(reg->entries);
 
   irwriter_raw(w, "define void @vpa_dispatch(ptr %tt, i32 %action_id, i32 %cp_start, i32 %cp_size) {\n");
@@ -1165,14 +1194,14 @@ void vpa_gen(VpaGenInput* input, HeaderWriter* hw, IrWriter* w) {
     darray_del(patterns);
   }
 
-  // Emit action dispatch and lex loop in IR
+  // Emit parse bridges, action dispatch, and lex loop in IR
+  _gen_parse_scope_bridges_ir(&reg, w);
   _gen_action_dispatch_ir(&reg, w);
   _gen_lex_loop_ir(scopes, w);
 
   // Emit header: declarations, token IDs, action metadata
   _gen_lex_declarations(scopes, hw);
   _gen_user_hook_header(&reg, hw);
-  _gen_parse_scope_header(&reg, hw);
   _gen_token_header(&reg, hw);
   _gen_action_table_header(&reg, scopes, hw);
 
