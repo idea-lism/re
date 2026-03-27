@@ -63,12 +63,12 @@ Act as an low-level ambiguity resolver, we prefer first-declared state when poss
 
 The lexer will remain simple, just to solve the state and the macro problem.
 
-Hooks have the info of current pos, parsed range, can return token id or break / fail.
+Hooks have the info of current pos, parsed range, can return token id or end / fail.
 
 to lex the syntax we mainly have these patterns defined:
 - `%state` define state
 - `%ignore` define tokens to ignore -- these tokens won't get into the stream
-- `%effect` define effect of a hook. hooks without `%effect` won't emit token / break lexing loop
+- `%effect` (for validation-only) define effect of a hook. hooks without `%effect` won't emit token / end lexing loop
 - `%keyword` define keyword token
 - `.begin` primitive_hook: begin a scope (named by current rule name), later tokens will be pushed to a new chunk
 - `.end` primitive_hook: end scope, back to parent token stream

@@ -1215,16 +1215,192 @@ static void _check_cross_bracket_tags(ParseState* ps) {
 
 // --- Post-processing: allocate PEG rule IDs per scope ---
 
+static bool _is_vpa_scope_rule(VpaRule* rule) {
+  if (rule->is_macro) {
+    return false;
+  }
+  if (rule->is_scope) {
+    return true;
+  }
+  for (int32_t i = 0; i < (int32_t)darray_size(rule->units); i++) {
+    if (rule->units[i].kind == VPA_SCOPE) {
+      return true;
+    }
+  }
+  return false;
+}
+
+static VpaUnit* _get_scope_body(VpaRule* rule) {
+  if (rule->is_scope) {
+    return rule->units;
+  }
+  for (int32_t i = 0; i < (int32_t)darray_size(rule->units); i++) {
+    if (rule->units[i].kind == VPA_SCOPE) {
+      return rule->units[i].children;
+    }
+  }
+  return NULL;
+}
+
 static void _assign_peg_scopes(ParseState* ps) {
   for (int32_t p = 0; p < (int32_t)darray_size(ps->peg_rules); p++) {
     PegRule* peg = &ps->peg_rules[p];
     for (int32_t v = 0; v < (int32_t)darray_size(ps->vpa_rules); v++) {
-      if (ps->vpa_rules[v].is_scope && strcmp(ps->vpa_rules[v].name, peg->name) == 0) {
+      if (_is_vpa_scope_rule(&ps->vpa_rules[v]) && strcmp(ps->vpa_rules[v].name, peg->name) == 0) {
         _set_str(&peg->scope, strdup(ps->vpa_rules[v].name));
         break;
       }
     }
   }
+}
+
+// --- Token set validation: VPA emit set vs PEG used set per scope ---
+
+static bool _str_set_has(char** set, const char* name) {
+  for (int32_t i = 0; i < (int32_t)darray_size(set); i++) {
+    if (strcmp(set[i], name) == 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
+static void _str_set_add(char*** set, const char* name) {
+  if (!_str_set_has(*set, name)) {
+    char* dup = strdup(name);
+    darray_push(*set, dup);
+  }
+}
+
+static void _str_set_free(char** set) {
+  for (int32_t i = 0; i < (int32_t)darray_size(set); i++) {
+    free(set[i]);
+  }
+  darray_del(set);
+}
+
+static VpaRule* _find_vpa_rule(ParseState* ps, const char* name) {
+  for (int32_t i = 0; i < (int32_t)darray_size(ps->vpa_rules); i++) {
+    if (!ps->vpa_rules[i].is_macro && strcmp(ps->vpa_rules[i].name, name) == 0) {
+      return &ps->vpa_rules[i];
+    }
+  }
+  return NULL;
+}
+
+static void _collect_emit_set(ParseState* ps, VpaUnit* units, char*** set, char*** visited) {
+  for (int32_t i = 0; i < (int32_t)darray_size(units); i++) {
+    VpaUnit* u = &units[i];
+    if (u->name && u->name[0]) {
+      _str_set_add(set, u->name);
+    }
+    if (u->kind == VPA_REF && u->name) {
+      if (!_str_set_has(*visited, u->name)) {
+        char* dup = strdup(u->name);
+        darray_push(*visited, dup);
+        VpaRule* ref = _find_vpa_rule(ps, u->name);
+        if (ref && !_is_vpa_scope_rule(ref)) {
+          _collect_emit_set(ps, ref->units, set, visited);
+        }
+      }
+    }
+  }
+}
+
+static void _collect_peg_used_set(PegUnit* unit, char*** set) {
+  if (unit->kind == PEG_TOK && unit->name) {
+    _str_set_add(set, unit->name);
+  }
+  for (int32_t i = 0; i < (int32_t)darray_size(unit->children); i++) {
+    _collect_peg_used_set(&unit->children[i], set);
+  }
+  if (unit->interlace) {
+    _collect_peg_used_set(unit->interlace, set);
+  }
+}
+
+static bool _is_ignored(ParseState* ps, const char* name) {
+  for (int32_t i = 0; i < (int32_t)darray_size(ps->ignores.names); i++) {
+    if (strcmp(ps->ignores.names[i], name) == 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
+static bool _validate_token_sets(ParseState* ps) {
+  for (int32_t v = 0; v < (int32_t)darray_size(ps->vpa_rules); v++) {
+    VpaRule* vpa_rule = &ps->vpa_rules[v];
+    if (!_is_vpa_scope_rule(vpa_rule)) {
+      continue;
+    }
+    VpaUnit* body = _get_scope_body(vpa_rule);
+    if (!body) {
+      continue;
+    }
+
+    // Find PEG rules for this scope
+    bool has_peg = false;
+    for (int32_t p = 0; p < (int32_t)darray_size(ps->peg_rules); p++) {
+      if (strcmp(ps->peg_rules[p].name, vpa_rule->name) == 0) {
+        has_peg = true;
+        break;
+      }
+    }
+    if (!has_peg) {
+      continue;
+    }
+
+    // Collect VPA emit set for this scope (excluding ignored tokens)
+    char** emit_set = darray_new(sizeof(char*), 0);
+    char** visited = darray_new(sizeof(char*), 0);
+    _collect_emit_set(ps, body, &emit_set, &visited);
+    _str_set_free(visited);
+
+    // Remove ignored tokens from emit set
+    char** filtered_emit = darray_new(sizeof(char*), 0);
+    for (int32_t i = 0; i < (int32_t)darray_size(emit_set); i++) {
+      if (!_is_ignored(ps, emit_set[i])) {
+        char* dup = strdup(emit_set[i]);
+        darray_push(filtered_emit, dup);
+      }
+    }
+    _str_set_free(emit_set);
+
+    // Collect PEG used set for this scope (union of all PEG rules in scope)
+    char** used_set = darray_new(sizeof(char*), 0);
+    for (int32_t p = 0; p < (int32_t)darray_size(ps->peg_rules); p++) {
+      PegRule* peg = &ps->peg_rules[p];
+      const char* pscope = peg->scope ? peg->scope : "main";
+      if (strcmp(pscope, vpa_rule->name) == 0) {
+        _collect_peg_used_set(&peg->seq, &used_set);
+      }
+    }
+
+    // Check: every PEG token must exist in VPA emit set
+    for (int32_t i = 0; i < (int32_t)darray_size(used_set); i++) {
+      if (!_str_set_has(filtered_emit, used_set[i])) {
+        _error(ps, "scope '%s': peg uses token @%s not emitted by vpa", vpa_rule->name, used_set[i]);
+        _str_set_free(filtered_emit);
+        _str_set_free(used_set);
+        return false;
+      }
+    }
+
+    // Check: every VPA token must be used in PEG
+    for (int32_t i = 0; i < (int32_t)darray_size(filtered_emit); i++) {
+      if (!_str_set_has(used_set, filtered_emit[i])) {
+        _error(ps, "scope '%s': vpa emits token @%s not used by peg", vpa_rule->name, filtered_emit[i]);
+        _str_set_free(filtered_emit);
+        _str_set_free(used_set);
+        return false;
+      }
+    }
+
+    _str_set_free(filtered_emit);
+    _str_set_free(used_set);
+  }
+  return true;
 }
 
 // --- Validations ---
@@ -1277,6 +1453,11 @@ static bool _validate(ParseState* ps) {
       return false;
     }
   }
+
+  if (!_validate_token_sets(ps)) {
+    return false;
+  }
+
   return true;
 }
 
