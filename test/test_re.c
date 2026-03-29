@@ -14,8 +14,6 @@
     printf("ok\n");                                                                                                    \
   } while (0)
 
-
-
 static char* _gen_ir(void (*fn)(Aut*, Re*, IrWriter*)) {
   char* buf = NULL;
   size_t sz = 0;

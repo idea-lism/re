@@ -13,8 +13,6 @@
     printf("ok\n");                                                                                                    \
   } while (0)
 
-
-
 // Emit a BB header for a pre-reserved label (use instead of irwriter_bb for forward-declared labels)
 
 // Helper: _capture irwriter output into a malloc'd string

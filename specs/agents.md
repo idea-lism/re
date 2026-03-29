@@ -9,6 +9,10 @@ The AGENTS.md must highlight the following info:
 2. A optimized PEG parser.
    - Graph-coloring optimized parsing.
 
+### Rules
+
+If I said "refactor", it means disruptive changes.
+
 ### Develop
 
 ```

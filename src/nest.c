@@ -11,6 +11,38 @@
 #include <stdlib.h>
 #include <string.h>
 
+static const char* const cmdopt_set = "set";
+
+#define CMDOPT_MATCH(s, l, n, d, i)                                                                       \
+  {                                                                                                                    \
+    if (0 == strcmp("-" #s, argv[i])) {                                                                                \
+      if (n == 0) {                                                                                                    \
+        arg_##s = cmdopt_set;                                                                                          \
+        continue;                                                                                                      \
+      } else if (n == 2 && (i + 1 >= argc || argv[i + 1][0] == '-')) {                                                 \
+        arg_##s = cmdopt_set;                                                                                          \
+        continue;                                                                                                      \
+      } else if (i + 1 < argc) {                                                                                      \
+        arg_##s = argv[++i];                                                                                           \
+        continue;                                                                                                      \
+      }                                                                                                                \
+    } else if (0 == strncmp(n == 0 ? "--" #l : "--" #l "=", argv[i], strlen("--" #l "="))) {                           \
+      if (n == 0) {                                                                                                    \
+        arg_##s = cmdopt_set;                                                                                          \
+        continue;                                                                                                      \
+      } else {                                                                                                         \
+        arg_##s = argv[i] + strlen("--" #l "=");                                                                       \
+        continue;                                                                                                      \
+      }                                                                                                                \
+    }                                                                                                                  \
+  }
+
+#define CMDOPT_USAGE(s, l, n, d)                                                                                       \
+  if (n == 0)                                                                                                          \
+    fprintf(stderr, "  -" #s ", --" #l "\t" d "\n");                                                                   \
+  else                                                                                                                 \
+    fprintf(stderr, "  -" #s " <" #l ">, --" #l "=<arg>\t" d "\n");
+
 // --- Lex helpers (inlined from parse_gen.c) ---
 
 typedef struct {
@@ -455,63 +487,38 @@ static void _usage(void) {
                   "  l    generate lexer from regex patterns\n"
                   "  c    generate parser from .nest syntax\n"
                   "\n"
-                  "nest l <input> -o <output.ll> [-f <func_name>] [-m <mode>] [-t <triple>]\n"
-                  "  input         file with one regex per line (action_id auto-assigned from 1)\n"
-                  "  -o <file>     output LLVM IR file\n"
-                  "  -f <name>     function name (default: \"lex\")\n"
-                  "  -m <mode>     mode flags: i=case-insensitive, b=binary\n"
-                  "  -t <triple>   target triple (default: omit in IR; if -t given without value: probe clang)\n"
-                  "\n"
-                  "nest c <input.nest> -o <output.ll> [-t <triple>]\n"
-                  "  input.nest    .nest syntax file\n"
-                  "  -o <file>     output LLVM IR file\n"
-                  "  -t <triple>   target triple (default: omit in IR; if -t given without value: probe clang)\n");
+                  "nest l <input> [options]\n");
+#define OPTION(s, l, n, d) CMDOPT_USAGE(s, l, n, d)
+#include "lex_opts.inc"
+  fprintf(stderr, "\nnest c <input.nest> [options]\n");
+#define OPTION(s, l, n, d) CMDOPT_USAGE(s, l, n, d)
+#include "compile_opts.inc"
   exit(1);
 }
 
 static int32_t _cmd_lex(int32_t argc, char** argv) {
+#define OPTION(s, l, n, d) const char* arg_##s = 0;
+#include "lex_opts.inc"
+
   const char* input = NULL;
-  const char* output = NULL;
-  const char* func_name = "lex";
-  const char* mode = "";
-  const char* triple = NULL;
-
-  int32_t i = 0;
-  while (i < argc) {
-    if (strcmp(argv[i], "-o") == 0) {
-      if (++i >= argc) {
-        _usage();
-      }
-      output = argv[i++];
-    } else if (strcmp(argv[i], "-f") == 0) {
-      if (++i >= argc) {
-        _usage();
-      }
-      func_name = argv[i++];
-    } else if (strcmp(argv[i], "-m") == 0) {
-      if (++i >= argc) {
-        _usage();
-      }
-      mode = argv[i++];
-    } else if (strcmp(argv[i], "-t") == 0) {
-      i++;
-      if (i < argc && argv[i][0] != '-') {
-        triple = argv[i++];
-      } else {
-        triple = _detect_triple();
-      }
-    } else if (argv[i][0] == '-') {
-      _usage();
-    } else if (!input) {
-      input = argv[i++];
-    } else {
-      _usage();
+  for (int32_t i = 0; i < argc; i++) {
+#define OPTION(s, l, n, d) CMDOPT_MATCH(s, l, n, d, i)
+#include "lex_opts.inc"
+    if (!input) {
+      input = argv[i];
+      continue;
     }
-  }
-
-  if (!input || !output) {
     _usage();
   }
+
+  if (!input || !arg_o) {
+    _usage();
+  }
+
+  const char* output = arg_o;
+  const char* func_name = arg_f ? arg_f : "lex";
+  const char* mode = arg_m ? arg_m : "";
+  const char* triple = (arg_t == cmdopt_set) ? _detect_triple() : arg_t;
   FILE* fin = fopen(input, "r");
   if (!fin) {
     perror(input);
@@ -576,36 +583,26 @@ static char* _read_file(const char* path) {
 }
 
 static int32_t _cmd_compile(int32_t argc, char** argv) {
+#define OPTION(s, l, n, d) const char* arg_##s = 0;
+#include "compile_opts.inc"
+
   const char* input = NULL;
-  const char* output = NULL;
-  const char* triple = NULL;
-
-  int32_t i = 0;
-  while (i < argc) {
-    if (strcmp(argv[i], "-o") == 0) {
-      if (++i >= argc) {
-        _usage();
-      }
-      output = argv[i++];
-    } else if (strcmp(argv[i], "-t") == 0) {
-      i++;
-      if (i < argc && argv[i][0] != '-') {
-        triple = argv[i++];
-      } else {
-        triple = _detect_triple();
-      }
-    } else if (argv[i][0] == '-') {
-      _usage();
-    } else if (!input) {
-      input = argv[i++];
-    } else {
-      _usage();
+  for (int32_t i = 0; i < argc; i++) {
+#define OPTION(s, l, n, d) CMDOPT_MATCH(s, l, n, d, i)
+#include "compile_opts.inc"
+    if (!input) {
+      input = argv[i];
+      continue;
     }
-  }
-
-  if (!input || !output) {
     _usage();
   }
+
+  if (!input || !arg_o) {
+    _usage();
+  }
+
+  const char* output = arg_o;
+  const char* triple = (arg_t == cmdopt_set) ? _detect_triple() : arg_t;
   char* src = _read_file(input);
   if (!src) {
     return 1;
