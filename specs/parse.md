@@ -154,7 +154,7 @@ PEG semantics:
 
 ### Nested word lexing
 
-in the bootstraping `parse.c`, define `_lex_scope(scope_id)` function, which finds corresponding scope config
+in the bootstraping `parse.c`, define `_lex_scope(scope_id)` function, which finds corresponding scope config and lex.
 
 ```c
 typedef ScopeConfigs ScopeConfig*;
@@ -168,7 +168,13 @@ struct ScopeConfig {
 }
 ```
 
-In the loop, when met `end_token`, return and pop chunk head. When a token is one of sub_scopes, call down.
+In the loop of `_lex_scope`
+- when met `end_token`, return and pop chunk head.
+- when a token is one of sub_scopes, call `_lex_scope(sub_scope_id)`.
+
+Error handling:
+- when sub lexer meets error, set error to lexing state
+- parent lexer checks lexing state after calling sub lexer, if error, just return
 
 ### What is FORBIDDEN, a no-go
 

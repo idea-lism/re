@@ -37,28 +37,28 @@ vpa = /\s*\[\[vpa\]\]\n/ .begin {
   /\.fail/ @hook_fail
   /\.unparse/ @hook_unparse
   id @vpa_id
-  /\.{id}/ @user_hook_id
-  /\@{id}/ @tok_id .on_tok_def
-  /\${id}/ @state_id
+  /\*\{id}/ @macro_id
+  /\.\{id}/ @user_hook_id
+  /\@\{id}/ @tok_id
+  /\$\{id}/ @state_id
   ops
-  /{/ @scope_begin .scope_begin # custom hook
-  /}/ .scope_end @scope_end
+  /{/ @scope_begin
+  /}/ @scope_end
   re_str
   *ignores
 }
 
-%keyword peg_ops "<" ">" "?" "+" "*"
+%keyword peg_ops "<" ">" "?" "+" "*" "="
 
 peg = /\s*\[\[peg\]\]\n/ .begin {
-  /[a-z_]\w*/ @id .on_id
+  /[a-z_]\w*/ @peg_id
   # note: emit_id always attaches to previous regexp unit
   #       so the @tok_id token starts and ends with `id`, excluding the `@`
-  /\@/ id @tok_id .on_tok_use
-  /: */ id @tag_id
-  /=/ @assign .on_assign # .on_id following .on_assign then we know the id is a rule name
+  /\@\{id}/ @tok_id
+  /: *\{id}/ @tag_id
   /[/ @branches_begin
   /]/ @branches_end
-  peg_ops
+  *peg_ops
   keyword_str
   *ignores
 }
@@ -77,13 +77,19 @@ re = /(b|i|ib|bi)?\// @re_tag .begin {
   /\\h/ @re_hex_class
   /\\a/ @re_bof
   /\\z/ @re_eof
-  re_ops
+  re_ref
+  *re_ops
   *chars
+}
+
+re_ref = /\\\{/ .begin {
+  id @re_ref
+  /\}/ .end
 }
 
 charclass = /\[\^?/ @charclass_begin .begin {
   /\]/ .end
-  /.-/ @range_start  # char followed by dash: start of range
+  /-/ @range_sep
   *chars
 }
 
@@ -94,8 +100,8 @@ charclass = /\[\^?/ @charclass_begin .begin {
   /./ @char
 }
 
-re_str = /["']/ .set_quote .begin @str_begin {
-  $last_quote @str_end .end # meet " and strings ends
+re_str = /["']/ .set_quote .begin {
+  $last_quote .end # meet " and strings ends
   *chars
 }
 
@@ -136,7 +142,7 @@ effect = [
   @hook_unparse
 ]
 
-keyword_def = "%keyword" @id @tok_id+
+keyword_def = "%keyword" @vpa_id @tok_id+
 
 vpa_rule = @vpa_id "=" [
   re followup*
@@ -169,7 +175,7 @@ scope_line = [
 
 ### Regex AST rules
 
-re = @re_tag re_quantified+
+re = @re_tag re_quantified+<"|">
 
 re_quantified = re_unit [
   "?" : maybe
@@ -178,7 +184,7 @@ re_quantified = re_unit [
   : unquantified
 ]
 
-re_atom = [
+re_unit = [
   "(" re ")"
   charclass
   @re_dot
@@ -188,6 +194,7 @@ re_atom = [
   @re_hex_class
   @re_bof
   @re_eof
+  @re_ref
   @char
   @codepoint
   @c_escape
@@ -197,8 +204,15 @@ re_atom = [
 charclass = @charclass_begin charclass_unit+
 
 charclass_unit = [
-  @range_start re_char : range
-  re_char              : single
+  charclass_char @range_sep charclass_char : range
+  charclass_char : single
+]
+
+charclass_char = [
+  @codepoint
+  @c_escape
+  @plain_escape
+  @char
 ]
 
 re_str = re_str_char+
@@ -214,12 +228,12 @@ re_str_char = [
 
 peg = @nl* peg_rule+<@nl> @nl*
 
-peg_rule = id "=" seq
+peg_rule = @peg_id "=" seq
 
 seq = peg_unit+
 
 peg_unit = [
-  id multiplier?
+  @peg_id multiplier?
   @tok_id multiplier?
   @keyword_str multiplier?
   branches
