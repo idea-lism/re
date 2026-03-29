@@ -149,10 +149,7 @@ typedef struct {
 
 typedef struct {
   ScopeId id;
-  int32_t end_token;
   LexFunc lex_fn;
-  const int32_t* ignore_tokens;
-  const int32_t* sub_scopes;
 } ScopeConfig;
 
 static int32_t _next_cp(LexCtx* ctx) {
@@ -172,31 +169,15 @@ static TokenChunk _lex_charclass(LexCtx* ctx);
 static TokenChunk _lex_keyword_str(LexCtx* ctx);
 
 static TokenChunk _lex_scope(LexCtx* ctx, ScopeId scope_id) {
-  static const int32_t main_ignore[] = {IGNORED_COMMENT, IGNORED_SPACE, -1};
-  static const int32_t main_children[] = {SCOPE_VPA, SCOPE_PEG, -1};
-  static const int32_t vpa_ignore[] = {IGNORED_COMMENT, IGNORED_SPACE, IGNORED_PEG, -1};
-  static const int32_t vpa_children[] = {SCOPE_RE, SCOPE_RE_STR, -1};
-  static const int32_t peg_ignore[] = {IGNORED_COMMENT, IGNORED_SPACE, -1};
-  static const int32_t peg_children[] = {SCOPE_KEYWORD_STR, -1};
-  static const int32_t re_ignore[] = {-1};
-  static const int32_t re_children[] = {SCOPE_CHARCLASS, -1};
-  static const int32_t re_ref_ignore[] = {-1};
-  static const int32_t re_ref_children[] = {-1};
-  static const int32_t re_str_ignore[] = {-1};
-  static const int32_t re_str_children[] = {-1};
-  static const int32_t charclass_ignore[] = {-1};
-  static const int32_t charclass_children[] = {-1};
-  static const int32_t keyword_str_ignore[] = {-1};
-  static const int32_t keyword_str_children[] = {-1};
   static const ScopeConfig configs[] = {
-      [SCOPE_MAIN] = {SCOPE_MAIN, -1, lex_main, main_ignore, main_children},
-      [SCOPE_VPA] = {SCOPE_VPA, IGNORE_PEG, lex_vpa, vpa_ignore, vpa_children},
-      [SCOPE_PEG] = {SCOPE_PEG, -1, lex_peg, peg_ignore, peg_children},
-      [SCOPE_RE] = {SCOPE_RE, IGNORE_RE_END, lex_re, re_ignore, re_children},
-      [SCOPE_RE_REF] = {SCOPE_RE_REF, IGNORE_RE_REF_END, lex_re_ref, re_ref_ignore, re_ref_children},
-      [SCOPE_RE_STR] = {SCOPE_RE_STR, STATE_LAST_QUOTE, lex_re_str, re_str_ignore, re_str_children},
-      [SCOPE_CHARCLASS] = {SCOPE_CHARCLASS, IGNORE_CHARCLASS_END, lex_charclass, charclass_ignore, charclass_children},
-      [SCOPE_KEYWORD_STR] = {SCOPE_KEYWORD_STR, STATE_LAST_QUOTE, lex_keyword_str, keyword_str_ignore, keyword_str_children},
+      [SCOPE_MAIN] = {SCOPE_MAIN, lex_main},
+      [SCOPE_VPA] = {SCOPE_VPA, lex_vpa},
+      [SCOPE_PEG] = {SCOPE_PEG, lex_peg},
+      [SCOPE_RE] = {SCOPE_RE, lex_re},
+      [SCOPE_RE_REF] = {SCOPE_RE_REF, lex_re_ref},
+      [SCOPE_RE_STR] = {SCOPE_RE_STR, lex_re_str},
+      [SCOPE_CHARCLASS] = {SCOPE_CHARCLASS, lex_charclass},
+      [SCOPE_KEYWORD_STR] = {SCOPE_KEYWORD_STR, lex_keyword_str},
   };
   ScopeConfig cfg = configs[scope_id];
   TokenChunk chunk = NULL;
@@ -222,7 +203,7 @@ static TokenChunk _lex_scope(LexCtx* ctx, ScopeId scope_id) {
           ctx->pos = ctx->it.byte_off;
           return chunk;
         }
-        if (last_action) {
+        if (last_action && last_action != TOK_IGNORE) {
           tc_add(&chunk, (Token){last_action, tok_start, cp_byte, tok_line, tok_col});
         }
       }

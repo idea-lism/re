@@ -161,16 +161,13 @@ typedef ScopeConfigs ScopeConfig*;
 
 struct ScopeConfig {
   int32_t scope_id;
-  int32_t end_token;
   LexFunc fn;
-  int32_t ignore_tokens[];
-  int32_t sub_scopes[];
 }
 ```
 
 In the loop of `_lex_scope`
 - when met `end_token`, return and pop chunk head.
-- when a token is one of sub_scopes, call `_lex_scope(sub_scope_id)`.
+- when a token_id is a scope_id (tok_id <= SCOPE_MAX), call `_lex_scope(tok_id)`.
 
 Error handling:
 - when sub lexer meets error, set error to lexing state

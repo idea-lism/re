@@ -3,25 +3,36 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+// Scope IDs
+typedef enum {
+  SCOPE_MAIN = 0,
+  SCOPE_VPA,
+  SCOPE_PEG,
+  SCOPE_RE,
+  SCOPE_RE_STR,
+  SCOPE_RE_REF,
+  SCOPE_CHARCLASS,
+  SCOPE_KEYWORD_STR,
+  SCOPE_COUNT
+} ScopeId;
+
 // Token IDs for the .nest syntax (used as action_id in automata).
 // Derived from specs/bootstrap.nest.
 //
 // IMPORTANT: Within each DFA scope, tokens that should win over '.' (TOK_CHAR)
 // must have a LOWER numeric ID than TOK_CHAR (due to MIN-RULE).
 enum {
-  IGNORED_COMMENT = 1,
-  IGNORED_SPACE,
-  IGNORED_NL,
+  TOK_START = SCOPE_COUNT, // first token ID (after scopes)
 
-  // section headers
-  TOK_SECTION_VPA,
-  TOK_SECTION_PEG,
+  // hook/action tokens
+  TOK_UNPARSE,
+  TOK_END,
+  TOK_IGNORE,
+
+  // whitespace tokens
+  TOK_NL,
 
   // VPA scope tokens
-  TOK_HOOK_BEGIN,
-  TOK_HOOK_END,
-  TOK_HOOK_FAIL,
-  TOK_HOOK_UNPARSE,
   TOK_VPA_ID,
   TOK_MACRO_ID,
   TOK_USER_HOOK_ID,
@@ -47,8 +58,6 @@ enum {
   TOK_NEG_CLASS_BEGIN,
   TOK_CLASS_BEGIN,
   TOK_CLASS_END,
-  TOK_STR_BEGIN,
-  TOK_STR_END,
 
   // regexp content tokens
   TOK_RE_DOT,
@@ -89,21 +98,6 @@ enum {
   TOK_COUNT
 };
 
-// Scope IDs
-typedef enum {
-  SCOPE_MAIN = 0,
-  SCOPE_VPA,
-  SCOPE_PEG,
-  SCOPE_RE,
-  SCOPE_RE_STR,
-  SCOPE_RE_REF,
-  SCOPE_CHARCLASS,
-  SCOPE_KEYWORD_STR,
-  SCOPE_COUNT
-} ScopeId;
-
-#include "header_writer.h"
-#include "irwriter.h"
 #include "re_ast.h"
 #include "token_chunk.h"
 #include "vpa.h"

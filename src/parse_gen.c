@@ -432,16 +432,16 @@ static void _lex_gen_func(Lex* l, IrWriter* w, bool debug_mode) {
 // --- Scope builders ---
 
 static void _build_ignores(Lex* l) {
-  _lex_add(l, "#[^\\n]*", __LINE__, 15, IGNORED_COMMENT);
-  _lex_add(l, "[ \\t]+", __LINE__, 15, IGNORED_SPACE);
-  _lex_add(l, "\\n+", __LINE__, 15, IGNORED_NL);
+  _lex_add(l, "#[^\\n]*", __LINE__, 15, TOK_IGNORE);
+  _lex_add(l, "[ \\t]+", __LINE__, 15, TOK_IGNORE);
 }
 
 static Lex* _build_main_scope(void) {
   Lex* l = _lex_new("lex_main", "nest", "");
 
-  _lex_add(l, "\\[\\[vpa\\]\\]", __LINE__, 15, TOK_SECTION_VPA);
-  _lex_add(l, "\\[\\[peg\\]\\]", __LINE__, 15, TOK_SECTION_PEG);
+  _lex_add(l, "\\[\\[vpa\\]\\]", __LINE__, 15, SCOPE_VPA);
+  _lex_add(l, "\\[\\[peg\\]\\]", __LINE__, 15, SCOPE_PEG);
+  _lex_add(l, "\\n+", __LINE__, 15, TOK_NL);
   _build_ignores(l);
   return l;
 }
@@ -449,8 +449,7 @@ static Lex* _build_main_scope(void) {
 static Lex* _build_vpa_scope(void) {
   Lex* l = _lex_new("lex_vpa", "nest", "");
 
-  _lex_add(l, "\\[\\[peg\\]\\]", __LINE__, 15, TOK_SECTION_PEG);
-
+  _lex_add(l, "\\[\\[peg\\]\\]", __LINE__, 15, TOK_UNPARSE);
   _lex_add(l, "(b|i|ib|bi)?/", __LINE__, 15, TOK_RE_BEGIN);
 
   _lex_add(l, "%state", __LINE__, 15, TOK_KW_STATE);
@@ -461,10 +460,10 @@ static Lex* _build_vpa_scope(void) {
   _lex_add(l, "=", __LINE__, 15, TOK_OPS_EQ);
   _lex_add(l, "\\|", __LINE__, 15, TOK_OPS_PIPE);
 
-  _lex_add(l, "\\.begin", __LINE__, 15, TOK_HOOK_BEGIN);
-  _lex_add(l, "\\.end", __LINE__, 15, TOK_HOOK_END);
-  _lex_add(l, "\\.fail", __LINE__, 15, TOK_HOOK_FAIL);
-  _lex_add(l, "\\.unparse", __LINE__, 15, TOK_HOOK_UNPARSE);
+  _lex_add(l, "\\.begin", __LINE__, 15, TOK_IGNORE);
+  _lex_add(l, "\\.end", __LINE__, 15, TOK_IGNORE);
+  _lex_add(l, "\\.fail", __LINE__, 15, TOK_IGNORE);
+  _lex_add(l, "\\.unparse", __LINE__, 15, TOK_IGNORE);
 
   _lex_add(l, "[a-z_][a-zA-Z0-9_]*", __LINE__, 15, TOK_VPA_ID);
   _lex_add(l, "\\*[a-z_][a-zA-Z0-9_]*", __LINE__, 15, TOK_MACRO_ID);
@@ -478,6 +477,7 @@ static Lex* _build_vpa_scope(void) {
   _lex_add(l, "\"", __LINE__, 15, TOK_STR_BEGIN);
   _lex_add(l, "'", __LINE__, 15, TOK_STR_BEGIN);
 
+  _lex_add(l, "\\n+", __LINE__, 15, TOK_NL);
   _build_ignores(l);
   return l;
 }
@@ -514,7 +514,7 @@ static Lex* _build_charclass_scope(void) {
   Lex* l = _lex_new("lex_charclass", "nest", "");
 
   _lex_add(l, "\\]", __LINE__, 15, TOK_CLASS_END);
-  _lex_add(l, ".-", __LINE__, 15, TOK_RANGE_SEP);
+  _lex_add(l, "-", __LINE__, 15, TOK_RANGE_SEP);
 
   _lex_add(l, "\\\\u\\{[0-9a-fA-F]+\\}", __LINE__, 15, TOK_CODEPOINT);
   _lex_add(l, "\\\\[bfnrtv]", __LINE__, 15, TOK_C_ESCAPE);
@@ -524,27 +524,37 @@ static Lex* _build_charclass_scope(void) {
   return l;
 }
 
-static Lex* _build_dquote_str_scope(void) {
-  Lex* l = _lex_new("lex_dquote_str", "nest", "");
+// re_ref scope: bootstrap.nest lines 85-88
+static Lex* _build_re_ref_scope(void) {
+  Lex* l = _lex_new("lex_re_ref", "nest", "");
+  
+  _lex_add(l, "[a-z_][a-zA-Z0-9_]*", __LINE__, 15, TOK_VPA_ID);
+  _lex_add(l, "\\}", __LINE__, 15, TOK_RE_END);
+  
+  return l;
+}
 
+// re_str scope: bootstrap.nest lines 103-106
+static Lex* _build_re_str_scope(void) {
+  Lex* l = _lex_new("lex_re_str", "nest", "");
+  
   _lex_add(l, "\"", __LINE__, 15, TOK_STR_END);
-  _lex_add(l, "\\\\u\\{[0-9a-fA-F]+\\}", __LINE__, 15, TOK_CODEPOINT);
-  _lex_add(l, "\\\\[bfnrtv]", __LINE__, 15, TOK_C_ESCAPE);
-  _lex_add(l, "\\\\.", __LINE__, 15, TOK_PLAIN_ESCAPE);
-  _lex_add(l, ".", __LINE__, 15, TOK_CHAR);
-
-  return l;
-}
-
-static Lex* _build_squote_str_scope(void) {
-  Lex* l = _lex_new("lex_squote_str", "nest", "");
-
   _lex_add(l, "'", __LINE__, 15, TOK_STR_END);
   _lex_add(l, "\\\\u\\{[0-9a-fA-F]+\\}", __LINE__, 15, TOK_CODEPOINT);
   _lex_add(l, "\\\\[bfnrtv]", __LINE__, 15, TOK_C_ESCAPE);
   _lex_add(l, "\\\\.", __LINE__, 15, TOK_PLAIN_ESCAPE);
   _lex_add(l, ".", __LINE__, 15, TOK_CHAR);
+  
+  return l;
+}
 
+// keyword_str scope: bootstrap.nest lines 108-111
+static Lex* _build_keyword_str_scope(void) {
+  Lex* l = _lex_new("lex_keyword_str", "nest", "");
+  
+  _lex_add(l, "[\"']", __LINE__, 15, TOK_END);
+  _lex_add(l, "(\\\\.|[^\"\\\\])+", __LINE__, 15, TOK_CHAR);
+  
   return l;
 }
 
@@ -552,7 +562,7 @@ static Lex* _build_peg_scope(void) {
   Lex* l = _lex_new("lex_peg", "nest", "");
 
   _lex_add(l, "[a-z_][a-zA-Z0-9_]*", __LINE__, 15, TOK_PEG_ID);
-  _lex_add(l, "@[a-z_][a-zA-Z0-9_]*", __LINE__, 15, TOK_PEG_TOK_ID);
+  _lex_add(l, "@[a-z_][a-zA-Z0-9_]*", __LINE__, 15, TOK_TOK_ID);
   _lex_add(l, ": *[a-z_][a-zA-Z0-9_]*", __LINE__, 15, TOK_TAG_ID);
   _lex_add(l, "=", __LINE__, 15, TOK_PEG_ASSIGN);
   _lex_add(l, "\\[", __LINE__, 15, TOK_BRANCHES_BEGIN);
@@ -564,9 +574,9 @@ static Lex* _build_peg_scope(void) {
   _lex_add(l, "\\+", __LINE__, 15, TOK_PEG_PLUS);
   _lex_add(l, "\\*", __LINE__, 15, TOK_PEG_STAR);
 
-  _lex_add(l, "\"", __LINE__, 15, TOK_STR_BEGIN);
-  _lex_add(l, "'", __LINE__, 15, TOK_STR_BEGIN);
+  _lex_add(l, "[\"']", __LINE__, 15, SCOPE_KEYWORD_STR);
 
+  _lex_add(l, "\\n+", __LINE__, 15, TOK_NL);
   _build_ignores(l);
   return l;
 }
@@ -587,8 +597,14 @@ int main(int argc, char** argv) {
   irwriter_start(w, "nest", ".");
 
   Lex* scopes[] = {
-      _build_main_scope(),       _build_vpa_scope(),        _build_re_scope(),  _build_charclass_scope(),
-      _build_dquote_str_scope(), _build_squote_str_scope(), _build_peg_scope(),
+      _build_main_scope(),
+      _build_vpa_scope(),
+      _build_re_scope(),
+      _build_charclass_scope(),
+      _build_re_ref_scope(),
+      _build_re_str_scope(),
+      _build_keyword_str_scope(),
+      _build_peg_scope(),
   };
   int32_t nscopes = sizeof(scopes) / sizeof(scopes[0]);
 

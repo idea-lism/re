@@ -35,3 +35,11 @@ src/parse_gen.c
   - mimic the struct of `specs/bootstrap.nest`, but with hand-written lex helper calls
   - uses the lex helpers to generate DFAs (one DFA per scope) for the whole source file
   - use the token definition in `src/parse.h` for lex actions.
+
+Regexps that having an `.unparse` hook should generate a `TOK_UNPARSE` after it.
+
+Regexps that having an `.end` hook should generate a universal `TOK_END`.
+
+Regexps that are not generating tokens can generate a universal `TOK_IGNORE`.
+
+When a subscope is there, match the first regexp of the subscope, and emit a `SCOPE_XXX` token.
