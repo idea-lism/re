@@ -18,7 +18,7 @@
 // --- Action registry ---
 
 typedef struct {
-  int32_t tok_id;       // 0 when no token should be emitted
+  int32_t tok_id;        // 0 when no token should be emitted
   int32_t push_scope_id; // -1 when no scope should be pushed
   bool pop_scope;
   int32_t hook;
@@ -31,8 +31,8 @@ typedef struct {
   char** tok_names;     // darray, parallel
 } ActionRegistry;
 
-static int32_t _register_action(ActionRegistry* reg, int32_t tok_id, int32_t push_scope_id, bool pop_scope, int32_t hook,
-                                const char* user_hook, const char* parse_scope_name) {
+static int32_t _register_action(ActionRegistry* reg, int32_t tok_id, int32_t push_scope_id, bool pop_scope,
+                                int32_t hook, const char* user_hook, const char* parse_scope_name) {
   int32_t id = (int32_t)darray_size(reg->entries) + 1;
   ActionEntry e = {
       .tok_id = tok_id,
@@ -334,8 +334,8 @@ static int32_t _resolve_action(ActionRegistry* reg, ScopeInfo* scope, VpaUnit* u
   return _register_action(reg, tok_id, -1, pop_scope, unit->hook, unit->user_hook, parse_scope_name);
 }
 
-static DfaPattern* _resolve_body(ScopeInfo* scope, VpaUnit* body, VpaRule* rules, ScopeInfo* scopes, ActionRegistry* reg,
-                                 StateDecl* states, EffectDecl* effects, PegRule* peg_rules) {
+static DfaPattern* _resolve_body(ScopeInfo* scope, VpaUnit* body, VpaRule* rules, ScopeInfo* scopes,
+                                 ActionRegistry* reg, StateDecl* states, EffectDecl* effects, PegRule* peg_rules) {
   DfaPattern* patterns = darray_new(sizeof(DfaPattern), 0);
 
   for (int32_t i = 0; i < (int32_t)darray_size(body); i++) {
@@ -346,7 +346,8 @@ static DfaPattern* _resolve_body(ScopeInfo* scope, VpaUnit* body, VpaRule* rules
       if (action_id == 0) {
         continue;
       }
-      darray_push(patterns, ((DfaPattern){.kind = VPA_REGEXP, .ast = u->re_ast, .state_name = NULL, .action_id = action_id}));
+      darray_push(patterns,
+                  ((DfaPattern){.kind = VPA_REGEXP, .ast = u->re_ast, .state_name = NULL, .action_id = action_id}));
 
     } else if (u->kind == VPA_STATE && u->state_name && _find_state(states, u->state_name)) {
       int32_t action_id = _resolve_action(reg, scope, u, NULL, effects, peg_rules, true);
@@ -368,9 +369,11 @@ static DfaPattern* _resolve_body(ScopeInfo* scope, VpaUnit* body, VpaRule* rules
       if (scope_unit && scope_unit->re_ast) {
         ScopeInfo* target = _find_scope(scopes, ref_rule->name);
         if (target) {
-          int32_t aid = _register_action(reg, 0, target->scope_id, false, scope_unit->hook, scope_unit->user_hook, NULL);
-          darray_push(patterns,
-                      ((DfaPattern){.kind = VPA_REGEXP, .ast = scope_unit->re_ast, .state_name = NULL, .action_id = aid}));
+          int32_t aid =
+              _register_action(reg, 0, target->scope_id, false, scope_unit->hook, scope_unit->user_hook, NULL);
+          darray_push(
+              patterns,
+              ((DfaPattern){.kind = VPA_REGEXP, .ast = scope_unit->re_ast, .state_name = NULL, .action_id = aid}));
         }
       }
       for (int32_t j = 0; j < (int32_t)darray_size(ref_rule->units); j++) {

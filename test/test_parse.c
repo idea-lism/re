@@ -19,8 +19,6 @@
 
 void parse_nest(const char* src, HeaderWriter* header_writer, IrWriter* ir_writer);
 
-
-
 // Minimal valid test source: one scope with tokens that match PEG usage.
 // main scope emits @id and @assign (ignoring @comment and @space).
 // PEG main rule uses exactly @id and @assign.

@@ -31,7 +31,7 @@ struct VpaUnit {
 
 // VPA rule
 typedef struct {
-  char* name; // (owned)
+  char* name;     // (owned)
   VpaUnit* units; // darray
   bool is_scope;
   bool is_macro;
@@ -52,22 +52,22 @@ typedef struct {
 
 // Effect declaration
 typedef struct {
-  char* hook_name;    // (owned)
-  int32_t* effects;   // darray
+  char* hook_name;  // (owned)
+  int32_t* effects; // darray
 } EffectDecl;
 
 // Ignore entry
 typedef struct {
-  char** names;       // darray of strdup'd strings
+  char** names; // darray of strdup'd strings
 } IgnoreSet;
 
 // Input to vpa_gen
 typedef struct {
-  VpaRule* rules;   // darray
+  VpaRule* rules;         // darray
   KeywordEntry* keywords; // darray
-  StateDecl* states; // darray
-  EffectDecl* effects; // darray
-  PegRule* peg_rules; // darray
+  StateDecl* states;      // darray
+  EffectDecl* effects;    // darray
+  PegRule* peg_rules;     // darray
   const char* src;
 } VpaGenInput;
 

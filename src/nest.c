@@ -13,7 +13,7 @@
 
 static const char* const cmdopt_set = "set";
 
-#define CMDOPT_MATCH(s, l, n, d, i)                                                                       \
+#define CMDOPT_MATCH(s, l, n, d, i)                                                                                    \
   {                                                                                                                    \
     if (0 == strcmp("-" #s, argv[i])) {                                                                                \
       if (n == 0) {                                                                                                    \
@@ -22,7 +22,7 @@ static const char* const cmdopt_set = "set";
       } else if (n == 2 && (i + 1 >= argc || argv[i + 1][0] == '-')) {                                                 \
         arg_##s = cmdopt_set;                                                                                          \
         continue;                                                                                                      \
-      } else if (i + 1 < argc) {                                                                                      \
+      } else if (i + 1 < argc) {                                                                                       \
         arg_##s = argv[++i];                                                                                           \
         continue;                                                                                                      \
       }                                                                                                                \

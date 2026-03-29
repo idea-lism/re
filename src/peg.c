@@ -53,12 +53,12 @@ static char* _dup_str(const char* s) { return s ? strdup(s) : NULL; }
 
 static PegUnit _clone_unit(PegUnit* src) {
   PegUnit out = {
-    .kind = src->kind,
-    .name = _dup_str(src->name),
-    .multiplier = src->multiplier,
-    .tag = _dup_str(src->tag),
-    .children = darray_new(sizeof(PegUnit), 0),
-    .ninterlace = src->ninterlace,
+      .kind = src->kind,
+      .name = _dup_str(src->name),
+      .multiplier = src->multiplier,
+      .tag = _dup_str(src->tag),
+      .children = darray_new(sizeof(PegUnit), 0),
+      .ninterlace = src->ninterlace,
   };
 
   if (src->interlace) {
@@ -89,9 +89,9 @@ static void _free_unit(PegUnit* unit) {
 
 static PegRule _clone_rule(PegRule* src) {
   return (PegRule){
-    .name = _dup_str(src->name),
-    .seq = _clone_unit(&src->seq),
-    .scope = _dup_str(src->scope),
+      .name = _dup_str(src->name),
+      .seq = _clone_unit(&src->seq),
+      .scope = _dup_str(src->scope),
   };
 }
 
@@ -185,21 +185,21 @@ static void _breakdown_unit(PegUnit* unit, const char* owner_name, int32_t* next
         (*next_id)++;
 
         AnalysisRule synthetic = {
-          .rule =
-            {
-              .name = strdup(synthetic_name),
-              .seq = _clone_unit(child),
-              .scope = NULL,
-            },
-          .source_idx = -1,
+            .rule =
+                {
+                    .name = strdup(synthetic_name),
+                    .seq = _clone_unit(child),
+                    .scope = NULL,
+                },
+            .source_idx = -1,
         };
         darray_push(*out_rules, synthetic);
         _breakdown_unit(&(*out_rules)[darray_size(*out_rules) - 1].rule.seq, synthetic_name, next_id, out_rules);
 
         _free_unit(child);
         *child = (PegUnit){
-          .kind = PEG_ID,
-          .name = strdup(synthetic_name),
+            .kind = PEG_ID,
+            .name = strdup(synthetic_name),
         };
       } else {
         _breakdown_unit(child, owner_name, next_id, out_rules);
@@ -220,8 +220,8 @@ static AnalysisRule* _build_analysis_rules(PegRule* rules, int32_t n_rules) {
   AnalysisRule* analysis_rules = darray_new(sizeof(AnalysisRule), 0);
   for (int32_t i = 0; i < n_rules; i++) {
     AnalysisRule ar = {
-      .rule = _clone_rule(&rules[i]),
-      .source_idx = i,
+        .rule = _clone_rule(&rules[i]),
+        .source_idx = i,
     };
     darray_push(analysis_rules, ar);
   }
@@ -234,8 +234,8 @@ static AnalysisRule* _build_analysis_rules(PegRule* rules, int32_t n_rules) {
   return analysis_rules;
 }
 
-static void _compute_set(PegUnit* unit, Bitset* out, AnalysisRule* rules, int32_t n_rules, Bitset* visited, char** symbols,
-                         int32_t is_first) {
+static void _compute_set(PegUnit* unit, Bitset* out, AnalysisRule* rules, int32_t n_rules, Bitset* visited,
+                         char** symbols, int32_t is_first) {
   if (unit->kind == PEG_TOK) {
     bitset_add_bit(out, (uint32_t)_token_id(symbols, unit->name));
   } else if (unit->kind == PEG_ID) {
@@ -937,13 +937,13 @@ void peg_gen(PegGenInput* input, HeaderWriter* hw, IrWriter* w) {
 
   for (int32_t i = 0; i < n_rules; i++) {
     Bitset* visited = bitset_new();
-    _compute_set(&analysis_rules[i].rule.seq, rule_infos[i].first_set, analysis_rules, (int32_t)darray_size(analysis_rules),
-                 visited, analysis_symbols, 1);
+    _compute_set(&analysis_rules[i].rule.seq, rule_infos[i].first_set, analysis_rules,
+                 (int32_t)darray_size(analysis_rules), visited, analysis_symbols, 1);
     bitset_del(visited);
 
     visited = bitset_new();
-    _compute_set(&analysis_rules[i].rule.seq, rule_infos[i].last_set, analysis_rules, (int32_t)darray_size(analysis_rules),
-                 visited, analysis_symbols, 0);
+    _compute_set(&analysis_rules[i].rule.seq, rule_infos[i].last_set, analysis_rules,
+                 (int32_t)darray_size(analysis_rules), visited, analysis_symbols, 0);
     bitset_del(visited);
   }
 

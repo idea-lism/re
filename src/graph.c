@@ -29,22 +29,18 @@ void graph_add_edge(Graph* g, int32_t u, int32_t v) {
 }
 
 void graph_del(Graph* g) {
-  if (!g) return;
+  if (!g) {
+    return;
+  }
   free(g->edges);
   free(g);
 }
 
-int32_t graph_n_vertices(Graph* g) {
-  return g->n_vertices;
-}
+int32_t graph_n_vertices(Graph* g) { return g->n_vertices; }
 
-int32_t graph_n_edges(Graph* g) {
-  return g->n_edges;
-}
+int32_t graph_n_edges(Graph* g) { return g->n_edges; }
 
-int32_t* graph_edges(Graph* g) {
-  return g->edges;
-}
+int32_t* graph_edges(Graph* g) { return g->edges; }
 
 static uint32_t _xorshift32(uint32_t* state) {
   uint32_t x = *state;
@@ -71,8 +67,10 @@ Graph* graph_random_erdos_renyi(uint32_t n, double p) {
 
 int32_t* graph_find_max_clique(Graph* g) {
   int32_t n = g->n_vertices;
-  if (n == 0) return NULL;
-  
+  if (n == 0) {
+    return NULL;
+  }
+
   int32_t* adj = calloc(n * n, sizeof(int32_t));
   for (int32_t i = 0; i < g->n_edges; i++) {
     int32_t u = g->edges[i * 2];
@@ -80,10 +78,10 @@ int32_t* graph_find_max_clique(Graph* g) {
     adj[u * n + v] = 1;
     adj[v * n + u] = 1;
   }
-  
+
   int32_t* clique = malloc(n * sizeof(int32_t));
   int32_t clique_size = 0;
-  
+
   for (int32_t v = 0; v < n; v++) {
     int32_t can_add = 1;
     for (int32_t i = 0; i < clique_size; i++) {
@@ -96,13 +94,13 @@ int32_t* graph_find_max_clique(Graph* g) {
       clique[clique_size++] = v;
     }
   }
-  
+
   free(adj);
   if (clique_size == 0) {
     free(clique);
     return NULL;
   }
-  
+
   int32_t* result = malloc((clique_size + 1) * sizeof(int32_t));
   result[0] = clique_size;
   memcpy(result + 1, clique, clique_size * sizeof(int32_t));

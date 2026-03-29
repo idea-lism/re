@@ -528,34 +528,34 @@ static Lex* _build_charclass_scope(void) {
 // re_ref scope: bootstrap.nest lines 85-88
 static Lex* _build_re_ref_scope(void) {
   Lex* l = _lex_new("lex_re_ref", "nest", "");
-  
+
   _lex_add(l, "[a-z_][a-zA-Z0-9_]*", __LINE__, 15, TOK_RE_REF);
   _lex_add(l, "\\}", __LINE__, 15, TOK_END);
-  
+
   return l;
 }
 
 // re_str scope: bootstrap.nest lines 103-106
 static Lex* _build_re_str_scope(void) {
   Lex* l = _lex_new("lex_re_str", "nest", "");
-  
+
   _lex_add(l, "\"", __LINE__, 15, TOK_END);
   _lex_add(l, "'", __LINE__, 15, TOK_END);
   _lex_add(l, "\\\\u\\{[0-9a-fA-F]+\\}", __LINE__, 15, TOK_CODEPOINT);
   _lex_add(l, "\\\\[bfnrtv]", __LINE__, 15, TOK_C_ESCAPE);
   _lex_add(l, "\\\\.", __LINE__, 15, TOK_PLAIN_ESCAPE);
   _lex_add(l, ".", __LINE__, 15, TOK_CHAR);
-  
+
   return l;
 }
 
 // keyword_str scope: bootstrap.nest lines 108-111
 static Lex* _build_keyword_str_scope(void) {
   Lex* l = _lex_new("lex_keyword_str", "nest", "");
-  
+
   _lex_add(l, "[\"']", __LINE__, 15, TOK_END);
   _lex_add(l, "(\\\\.|[^\"\\\\])+", __LINE__, 15, TOK_KEYWORD_STR);
-  
+
   return l;
 }
 
@@ -598,14 +598,8 @@ int main(int argc, char** argv) {
   irwriter_start(w, "nest", ".");
 
   Lex* scopes[] = {
-      _build_main_scope(),
-      _build_vpa_scope(),
-      _build_re_scope(),
-      _build_charclass_scope(),
-      _build_re_ref_scope(),
-      _build_re_str_scope(),
-      _build_keyword_str_scope(),
-      _build_peg_scope(),
+      _build_main_scope(),   _build_vpa_scope(),    _build_re_scope(),          _build_charclass_scope(),
+      _build_re_ref_scope(), _build_re_str_scope(), _build_keyword_str_scope(), _build_peg_scope(),
   };
   int32_t nscopes = sizeof(scopes) / sizeof(scopes[0]);
 

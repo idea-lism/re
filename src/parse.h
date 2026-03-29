@@ -20,7 +20,7 @@ enum {
   TOK_START = SCOPE_COUNT, // first token ID (after scopes)
 
   // shared tokens
-  TOK_END,    // ends any scope
+  TOK_END, // ends any scope
   TOK_IGNORE,
   TOK_NL,
 
@@ -92,12 +92,17 @@ enum {
   TOK_COUNT
 };
 
+#include "peg.h"
 #include "re_ast.h"
 #include "token_chunk.h"
 #include "vpa.h"
-#include "peg.h"
 
 // --- Parser state ---
+
+typedef struct {
+  int32_t off;
+  int32_t len;
+} StrSpan;
 
 typedef struct {
   const char* src;
@@ -108,7 +113,7 @@ typedef struct {
   int32_t tpos;
 
   ReAstNode** re_asts; // darray
-  void* str_spans;     // darray (StrSpan*)
+  StrSpan* str_spans;  // darray (StrSpan*)
 
   VpaRule* vpa_rules;     // darray
   KeywordEntry* keywords; // darray

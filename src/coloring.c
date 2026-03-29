@@ -40,7 +40,9 @@ static int32_t* _solve_dsatur(int32_t n_vertices, int32_t* edges, int32_t n_edge
     // pick vertex with max saturation, break ties by degree
     int32_t best = -1;
     for (int32_t v = 0; v < n_vertices; v++) {
-      if (colors[v] >= 0) continue;
+      if (colors[v] >= 0) {
+        continue;
+      }
       if (best < 0 || sat[v] > sat[best] || (sat[v] == sat[best] && degree[v] > degree[best])) {
         best = v;
       }
@@ -49,7 +51,9 @@ static int32_t* _solve_dsatur(int32_t n_vertices, int32_t* edges, int32_t n_edge
     // assign smallest color not used by neighbors
     int32_t c;
     for (c = 0; c < k; c++) {
-      if (!neighbor_colors[best * k + c]) break;
+      if (!neighbor_colors[best * k + c]) {
+        break;
+      }
     }
     if (c >= k) {
       free(adj);
@@ -91,11 +95,10 @@ extern void kissat_set_conflict_limit(kissat* solver, unsigned limit);
 extern int kissat_set_option(kissat* solver, const char* name, int new_value);
 extern void kissat_reserve(kissat* solver, int max_var);
 
-static int32_t _var(int32_t v, int32_t c, int32_t k) {
-  return v * k + c + 1;
-}
+static int32_t _var(int32_t v, int32_t c, int32_t k) { return v * k + c + 1; }
 
-static int32_t* _solve_sat(int32_t n_vertices, int32_t* edges, int32_t n_edges, int32_t k, int32_t max_steps, int32_t seed) {
+static int32_t* _solve_sat(int32_t n_vertices, int32_t* edges, int32_t n_edges, int32_t k, int32_t max_steps,
+                           int32_t seed) {
   kissat* solver = kissat_init();
   kissat_set_option(solver, "seed", seed);
   kissat_set_option(solver, "quiet", 1);
@@ -201,7 +204,8 @@ static void _build_segments(ColoringResult* cr, int32_t* colors, int32_t k) {
   free(color_pos);
 }
 
-ColoringResult* coloring_solve(int32_t n_vertices, int32_t* edges, int32_t n_edges, int32_t k, int32_t max_steps, int32_t seed) {
+ColoringResult* coloring_solve(int32_t n_vertices, int32_t* edges, int32_t n_edges, int32_t k, int32_t max_steps,
+                               int32_t seed) {
   ColoringResult* cr = malloc(sizeof(ColoringResult));
   cr->n_vertices = n_vertices;
   cr->vertex_info = malloc(n_vertices * sizeof(VertexInfo));
@@ -227,7 +231,9 @@ ColoringResult* coloring_solve(int32_t n_vertices, int32_t* edges, int32_t n_edg
 }
 
 void coloring_result_del(ColoringResult* cr) {
-  if (!cr) return;
+  if (!cr) {
+    return;
+  }
   free(cr->vertex_info);
   free(cr);
 }
@@ -237,6 +243,4 @@ void coloring_get_segment_info(ColoringResult* cr, int32_t vertex_id, int32_t* o
   *out_seg_mask = cr->vertex_info[vertex_id].seg_mask;
 }
 
-int32_t coloring_get_sg_size(ColoringResult* cr) {
-  return cr->sg_size;
-}
+int32_t coloring_get_sg_size(ColoringResult* cr) { return cr->sg_size; }

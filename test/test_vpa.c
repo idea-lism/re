@@ -24,8 +24,6 @@
     printf("ok\n");                                                                                                    \
   } while (0)
 
-
-
 // --- Helpers ---
 
 static void _gen(VpaGenInput* input, char** hdr_out, size_t* hdr_sz, char** ir_out, size_t* ir_sz) {

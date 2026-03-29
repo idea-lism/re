@@ -39,13 +39,6 @@ extern LexResult lex_keyword_str(int64_t state, int64_t cp);
 
 typedef LexResult (*LexFunc)(int64_t, int64_t);
 
-// --- String span (content region within quotes) ---
-
-typedef struct {
-  int32_t off;
-  int32_t len;
-} StrSpan;
-
 // --- Error reporting ---
 
 bool parse_has_error(ParseState* ps) { return ps->error[0] != '\0'; }
@@ -95,7 +88,7 @@ static char* _tok_strdup_skip(ParseState* ps, Token* t, int32_t skip) {
   return s;
 }
 
-__attribute__((format(printf, 1, 2))) char* parseparse_sfmt(const char* fmt, ...) {
+__attribute__((format(printf, 1, 2))) char* parse_sfmt(const char* fmt, ...) {
   va_list ap;
   va_start(ap, fmt);
   int32_t len = vsnprintf(NULL, 0, fmt, ap);
@@ -107,7 +100,7 @@ __attribute__((format(printf, 1, 2))) char* parseparse_sfmt(const char* fmt, ...
   return s;
 }
 
-void parseparse_set_str(char** dst, char* s) {
+void parse_set_str(char** dst, char* s) {
   free(*dst);
   *dst = s;
 }
@@ -183,13 +176,13 @@ static TokenChunk _lex_scope(LexCtx* ctx, ScopeId scope_id) {
   ScopeConfig cfg = configs[scope_id];
   TokenChunk chunk = NULL;
   tc_init(&chunk);
-  
+
   int64_t state = 0;
   int32_t last_action = 0;
   int32_t tok_start = ctx->it.byte_off;
   int32_t tok_line = ctx->it.line;
   int32_t tok_col = ctx->it.col;
-  
+
   while (ctx->pos < ctx->ps->src_len) {
     int32_t cp_byte = ctx->it.byte_off;
     int32_t cp_line = ctx->it.line;
@@ -405,8 +398,7 @@ static bool _parse_vpa_nl(ParseState* ps) {
 
 static bool _parse_vpa_rule_body(ParseState* ps, VpaRule* rule) {
   if (_parse_vpa_regexp(ps, rule) || _parse_vpa_str_span(ps, rule) || _parse_vpa_state_ref(ps, rule) ||
-      _parse_vpa_ref(ps, rule) ||
-      _parse_vpa_macro_ref(ps, rule) || _parse_vpa_pipe(ps) || _parse_vpa_nl(ps)) {
+      _parse_vpa_ref(ps, rule) || _parse_vpa_macro_ref(ps, rule) || _parse_vpa_pipe(ps) || _parse_vpa_nl(ps)) {
     return true;
   }
   _error_at(ps, _peek(ps), "unexpected token in rule body");
@@ -492,7 +484,7 @@ static bool _parse_macro_rule(ParseState* ps) {
 }
 
 static bool _parse_keyword_decl(ParseState* ps) {
-  if (!_at(ps, TOK_KW_KEYWORD)) {
+  if (!_at(ps, TOK_DIRECTIVES_KEYWORD)) {
     return false;
   }
   Token* kw_tok = _next(ps);
@@ -522,7 +514,7 @@ static bool _parse_keyword_decl(ParseState* ps) {
 }
 
 static bool _parse_ignore_decl(ParseState* ps) {
-  if (!_at(ps, TOK_KW_IGNORE)) {
+  if (!_at(ps, TOK_DIRECTIVES_IGNORE)) {
     return false;
   }
   _next(ps);
@@ -542,7 +534,7 @@ static bool _parse_ignore_decl(ParseState* ps) {
 }
 
 static bool _parse_state_decl(ParseState* ps) {
-  if (!_at(ps, TOK_KW_STATE)) {
+  if (!_at(ps, TOK_DIRECTIVES_STATE)) {
     return false;
   }
   Token* state_tok = _next(ps);
@@ -560,7 +552,7 @@ static bool _parse_state_decl(ParseState* ps) {
 }
 
 static bool _parse_effect_decl(ParseState* ps) {
-  if (!_at(ps, TOK_KW_EFFECT)) {
+  if (!_at(ps, TOK_DIRECTIVES_EFFECT)) {
     return false;
   }
   Token* effect_tok = _next(ps);
@@ -610,7 +602,7 @@ static bool _parse_vpa_section(ParseState* ps) {
       ps->tpos++;
       continue;
     }
-    if (t->id == TOK_PEG_ID || t->id == TOK_PEG_TOK_ID || t->id == TOK_PEG_ASSIGN) {
+    if (t->id == TOK_PEG_ID || t->id == TOK_PEG_TOK_ID || t->id == TOK_PEG_OPS_ASSIGN) {
       break;
     }
     if (_parse_keyword_decl(ps) || _parse_ignore_decl(ps) || _parse_state_decl(ps) || _parse_effect_decl(ps) ||
@@ -704,19 +696,19 @@ static bool _parse_peg_unit(ParseState* ps, PegUnit* unit) {
   // Multipliers
   Token* mt = _peek(ps);
   if (mt) {
-    if (mt->id == TOK_PEG_QUESTION) {
+    if (mt->id == TOK_PEG_OPS_QUESTION) {
       _next(ps);
       unit->multiplier = '?';
-    } else if (mt->id == TOK_PEG_PLUS) {
+    } else if (mt->id == TOK_PEG_OPS_PLUS) {
       _next(ps);
       unit->multiplier = '+';
-    } else if (mt->id == TOK_PEG_STAR) {
+    } else if (mt->id == TOK_PEG_OPS_STAR) {
       _next(ps);
       unit->multiplier = '*';
     }
 
     if (unit->multiplier == '+' || unit->multiplier == '*') {
-      if (_at(ps, TOK_PEG_LT)) {
+      if (_at(ps, TOK_PEG_OPS_LT)) {
         _next(ps);
         unit->interlace = calloc(1, sizeof(PegUnit));
         unit->interlace->kind = PEG_SEQ;
@@ -725,7 +717,7 @@ static bool _parse_peg_unit(ParseState* ps, PegUnit* unit) {
         }
         unit->ninterlace = 1;
         Token* gt = _peek(ps);
-        if (!gt || gt->id != TOK_PEG_GT) {
+        if (!gt || gt->id != TOK_PEG_OPS_GT) {
           _error_at(ps, gt, "expected '>' to close interlace");
           return false;
         }
@@ -764,7 +756,7 @@ static bool _parse_peg_rule(ParseState* ps) {
     _error_at(ps, name_tok, "expected peg rule name");
     return false;
   }
-  if (!_at(ps, TOK_PEG_ASSIGN)) {
+  if (!_at(ps, TOK_PEG_OPS_ASSIGN)) {
     _error_at(ps, name_tok, "expected '=' after peg rule name");
     return false;
   }
@@ -951,7 +943,7 @@ static void _auto_tag_unit(ParseState* ps, PegRule* rule, PegUnit* unit) {
           }
         }
         if ((!branch->tag || branch->tag[0] == '\0') && darray_size(branch->children) == 0) {
-          _error(ps, "epsilon branch in rule '%s' must have an explicit tag", rule->name);
+          parse_error(ps, "epsilon branch in rule '%s' must have an explicit tag", rule->name);
         }
       }
     }
@@ -960,7 +952,7 @@ static void _auto_tag_unit(ParseState* ps, PegRule* rule, PegUnit* unit) {
       for (int32_t j = i + 1; j < (int32_t)darray_size(unit->children); j++) {
         if (unit->children[i].tag && unit->children[i].tag[0] && unit->children[j].tag && unit->children[j].tag[0] &&
             strcmp(unit->children[i].tag, unit->children[j].tag) == 0) {
-          _error(ps, "duplicate tag '%s' in rule '%s'", unit->children[i].tag, rule->name);
+          parse_error(ps, "duplicate tag '%s' in rule '%s'", unit->children[i].tag, rule->name);
         }
       }
     }
@@ -997,7 +989,7 @@ static void _check_cross_bracket_tags(ParseState* ps) {
         }
         for (int32_t k = 0; k < (int32_t)darray_size(tags); k++) {
           if (strcmp(tags[k], tag) == 0) {
-            _error(ps, "duplicate tag '%s' across bracket groups in rule '%s'", tag, rule->name);
+            parse_error(ps, "duplicate tag '%s' across bracket groups in rule '%s'", tag, rule->name);
             goto next_rule;
           }
         }
@@ -1087,13 +1079,17 @@ ParseState* parse_state_new(void) {
 }
 
 void parse_state_del(ParseState* ps) {
-  if (!ps) return;
+  if (!ps) {
+    return;
+  }
   _free_state(ps);
   free(ps);
 }
 
 const char* parse_get_error(ParseState* ps) {
-  if (!ps) return NULL;
+  if (!ps) {
+    return NULL;
+  }
   return ps->error[0] ? ps->error : NULL;
 }
 
@@ -1103,7 +1099,9 @@ bool parse_nest(ParseState* ps, const char* src) {
   ps->src = src;
   ps->src_len = (int32_t)strlen(src);
 
-  if (!_lex_scope(ps)) {
+  LexCtx lex_ctx = {.ps = ps, .ustr = (char*)src, .byte_size = ps->src_len, .pos = 0, .it = ustr_iter_new(src)};
+
+  if (!_lex_scope(&lex_ctx, SCOPE_MAIN)) {
     return false;
   }
 
