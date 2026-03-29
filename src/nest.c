@@ -566,22 +566,6 @@ static int32_t _cmd_lex(int32_t argc, char** argv) {
   return 0;
 }
 
-static char* _read_file(const char* path) {
-  FILE* f = fopen(path, "r");
-  if (!f) {
-    perror(path);
-    return NULL;
-  }
-  fseek(f, 0, SEEK_END);
-  long sz = ftell(f);
-  fseek(f, 0, SEEK_SET);
-  char* buf = malloc((size_t)sz + 1);
-  size_t n = fread(buf, 1, (size_t)sz, f);
-  buf[n] = '\0';
-  fclose(f);
-  return buf;
-}
-
 static int32_t _cmd_compile(int32_t argc, char** argv) {
 #define OPTION(s, l, n, d) const char* arg_##s = 0;
 #include "compile_opts.inc"
@@ -603,7 +587,13 @@ static int32_t _cmd_compile(int32_t argc, char** argv) {
 
   const char* output = arg_o;
   const char* triple = (arg_t == cmdopt_set) ? _detect_triple() : arg_t;
-  char* src = _read_file(input);
+  FILE* fin = fopen(input, "r");
+  if (!fin) {
+    perror(input);
+    return 1;
+  }
+  char* src = ustr_from_file(fin);
+  fclose(fin);
   if (!src) {
     return 1;
   }
@@ -620,7 +610,7 @@ static int32_t _cmd_compile(int32_t argc, char** argv) {
   FILE* fout = fopen(output, "w");
   if (!fout) {
     perror(output);
-    free(src);
+    ustr_del(src);
     free(header_path);
     return 1;
   }
@@ -629,7 +619,7 @@ static int32_t _cmd_compile(int32_t argc, char** argv) {
   if (!fhdr) {
     perror(header_path);
     fclose(fout);
-    free(src);
+    ustr_del(src);
     free(header_path);
     return 1;
   }
@@ -645,7 +635,7 @@ static int32_t _cmd_compile(int32_t argc, char** argv) {
   hw_del(hw);
   fclose(fout);
   fclose(fhdr);
-  free(src);
+  ustr_del(src);
   free(header_path);
   return 0;
 }

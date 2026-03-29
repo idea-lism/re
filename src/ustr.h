@@ -2,8 +2,10 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
 
 char* ustr_new(size_t sz, const char* data);
+char* ustr_from_file(FILE* file);
 void ustr_del(char* s);
 
 typedef enum {

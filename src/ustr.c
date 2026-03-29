@@ -103,6 +103,50 @@ char* ustr_new(size_t sz, const char* data) {
   return s;
 }
 
+char* ustr_from_file(FILE* file) {
+  if (fseek(file, 0, SEEK_END) != 0) {
+    fprintf(stderr, "ustr_from_file: fseek SEEK_END failed\n");
+    return NULL;
+  }
+  long len = ftell(file);
+  if (len < 0) {
+    fprintf(stderr, "ustr_from_file: ftell failed\n");
+    return NULL;
+  }
+  if ((unsigned long)len > (size_t)INT32_MAX) {
+    fprintf(stderr, "ustr_from_file: file too large (%ld bytes)\n", len);
+    return NULL;
+  }
+  if (fseek(file, 0, SEEK_SET) != 0) {
+    fprintf(stderr, "ustr_from_file: fseek SEEK_SET failed\n");
+    return NULL;
+  }
+  int32_t size = (int32_t)len;
+  char* heap = (char*)calloc(1, _alloc_size(size));
+  if (!heap) {
+    fprintf(stderr, "ustr_from_file: alloc failed (%d bytes)\n", size);
+    return NULL;
+  }
+  char* s = heap + sizeof(int32_t);
+  *_size_ptr(s) = size;
+  if (size > 0 && (int32_t)fread(s, 1, (size_t)size, file) != size) {
+    fprintf(stderr, "ustr_from_file: fread failed\n");
+    free(heap);
+    return NULL;
+  }
+  s[size] = '\0';
+  uint8_t* marks = _marks_ptr(s, size);
+  if (ustr_validate((const uint8_t*)s, (size_t)size, marks) != 0) {
+    size_t err_pos;
+    UstrErr err = ustr_find_error((size_t)size, s, &err_pos);
+    const char* reason = (err == USTR_ERR_TRUNCATED) ? "truncated" : "invalid";
+    fprintf(stderr, "ustr_from_file: %s UTF-8 at byte %zu\n", reason, err_pos);
+    free(heap);
+    return NULL;
+  }
+  return s;
+}
+
 void ustr_del(char* s) {
   if (s) {
     free(s - sizeof(int32_t));
