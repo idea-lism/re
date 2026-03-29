@@ -36,7 +36,7 @@ foo$2 = [ # ordered choice
 ]
 ```
 
-Then for each scope, define a function. For labels inside each rule, prefix the label with rule name so they won't 
+Then for each scope, define a parse function. For labels inside each rule, prefix the label with rule name so they won't conflict
 
 ```
 foo_rule$start:
@@ -166,6 +166,8 @@ if (foo.is.tag1) {
   bar = load_bar(foo.bar);
 }
 ```
+
+Note that `load_xxx` works on defined rules, no need to generate loaders for broken-down rules.
 
 # Acceptance criteria
 

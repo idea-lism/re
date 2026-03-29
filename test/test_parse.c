@@ -329,6 +329,502 @@ TEST(test_validate_scope_tokens_not_mixed) {
   assert(_gen_succeeds(src));
 }
 
+// --- Phase 1: Validation error paths ---
+
+TEST(test_err_missing_main) {
+  const char* src = "[[vpa]]\n"
+                    "foo = {\n"
+                    "  /x/ @tok_a\n"
+                    "}\n"
+                    "[[peg]]\n"
+                    "foo = @tok_a\n";
+  assert(!_gen_succeeds(src));
+}
+
+TEST(test_err_scope_missing_end) {
+  // inner is a scope rule (= { ... }) with .begin but no .end
+  const char* src = "[[vpa]]\n"
+                    "main = {\n"
+                    "  inner\n"
+                    "  /x/ @tok_a\n"
+                    "}\n"
+                    "inner = {\n"
+                    "  /\\{/ .begin\n"
+                    "  /y/ @tok_b\n"
+                    "}\n"
+                    "[[peg]]\n"
+                    "main = @tok_a inner\n"
+                    "inner = @tok_b\n";
+  assert(!_gen_succeeds(src));
+}
+
+TEST(test_err_undeclared_state) {
+  const char* src = "[[vpa]]\n"
+                    "main = {\n"
+                    "  /x/ @tok_a\n"
+                    "  $undeclared\n"
+                    "}\n"
+                    "[[peg]]\n"
+                    "main = @tok_a\n";
+  assert(!_gen_succeeds(src));
+}
+
+TEST(test_err_empty_input) { assert(!_gen_succeeds("")); }
+
+TEST(test_err_no_vpa_section) {
+  const char* src = "[[peg]]\n"
+                    "main = @a\n";
+  assert(!_gen_succeeds(src));
+}
+
+TEST(test_err_trailing_tokens) {
+  const char* src = "[[vpa]]\n"
+                    "main = {\n"
+                    "  /x/ @tok_a\n"
+                    "}\n"
+                    "[[peg]]\n"
+                    "main = @tok_a\n"
+                    "[[vpa]]\n";
+  assert(!_gen_succeeds(src));
+}
+
+// --- Phase 2: VPA parsing features ---
+
+TEST(test_vpa_str_span) {
+  const char* src = "[[vpa]]\n"
+                    "%ignore @space\n"
+                    "main = {\n"
+                    "  \"hello\" @tok_hello\n"
+                    "  /[ \\t\\n]+/ @space\n"
+                    "}\n"
+                    "[[peg]]\n"
+                    "main = @tok_hello\n";
+  assert(_gen_succeeds(src));
+}
+
+TEST(test_vpa_state_ref) {
+  const char* src = "[[vpa]]\n"
+                    "%state $mode\n"
+                    "main = {\n"
+                    "  /x/ @tok_a\n"
+                    "  $mode\n"
+                    "}\n"
+                    "[[peg]]\n"
+                    "main = @tok_a\n";
+  char* hdr_buf = NULL;
+  size_t hdr_sz = 0;
+  char* ir_buf = NULL;
+  size_t ir_sz = 0;
+  _gen_output(src, &hdr_buf, &hdr_sz, &ir_buf, &ir_sz);
+  assert(hdr_sz > 0 && ir_sz > 0);
+  // state generates a matcher function or declaration
+  assert(strstr(ir_buf, "mode") || strstr(hdr_buf, "mode"));
+  free(hdr_buf);
+  free(ir_buf);
+}
+
+TEST(test_vpa_pipe) {
+  const char* src = "[[vpa]]\n"
+                    "%ignore @space\n"
+                    "main = {\n"
+                    "  /x/ @tok_a | /y/ @tok_b\n"
+                    "  /[ \\t\\n]+/ @space\n"
+                    "}\n"
+                    "[[peg]]\n"
+                    "main = @tok_a @tok_b\n";
+  assert(_gen_succeeds(src));
+}
+
+TEST(test_vpa_macro) {
+  const char* src = "[[vpa]]\n"
+                    "%ignore @space\n"
+                    "*ws = {\n"
+                    "  /[ \\t\\n]+/ @space\n"
+                    "}\n"
+                    "main = {\n"
+                    "  /x/ @tok_a\n"
+                    "  *ws\n"
+                    "}\n"
+                    "[[peg]]\n"
+                    "main = @tok_a\n";
+  assert(_gen_succeeds(src));
+}
+
+TEST(test_vpa_user_hook) {
+  const char* src = "[[vpa]]\n"
+                    "%effect .my_hook = .begin\n"
+                    "main = {\n"
+                    "  inner\n"
+                    "  /x/ @tok_a\n"
+                    "}\n"
+                    "inner = /\\{/ .my_hook {\n"
+                    "  /\\}/ .end\n"
+                    "  /y/ @tok_b\n"
+                    "}\n"
+                    "[[peg]]\n"
+                    "main = @tok_a inner\n"
+                    "inner = @tok_b\n";
+  char* hdr_buf = NULL;
+  size_t hdr_sz = 0;
+  char* ir_buf = NULL;
+  size_t ir_sz = 0;
+  _gen_output(src, &hdr_buf, &hdr_sz, &ir_buf, &ir_sz);
+  assert(hdr_sz > 0 && ir_sz > 0);
+  // user hook callback referenced in IR
+  assert(strstr(ir_buf, "my_hook"));
+  // scope IDs for both main and inner
+  assert(strstr(hdr_buf, "SCOPE_MAIN"));
+  assert(strstr(hdr_buf, "SCOPE_INNER"));
+  free(hdr_buf);
+  free(ir_buf);
+}
+
+TEST(test_vpa_fail_hook) {
+  const char* src = "[[vpa]]\n"
+                    "main = {\n"
+                    "  /x/ @tok_a\n"
+                    "  /invalid/ .fail\n"
+                    "}\n"
+                    "[[peg]]\n"
+                    "main = @tok_a\n";
+  assert(_gen_succeeds(src));
+}
+
+TEST(test_vpa_unparse_hook) {
+  const char* src = "[[vpa]]\n"
+                    "main = {\n"
+                    "  inner\n"
+                    "  /x/ @tok_a\n"
+                    "}\n"
+                    "inner = /\\{/ .begin {\n"
+                    "  /\\}/ .unparse .end\n"
+                    "  /y/ @tok_b\n"
+                    "}\n"
+                    "[[peg]]\n"
+                    "main = @tok_a inner\n"
+                    "inner = @tok_b\n";
+  assert(_gen_succeeds(src));
+}
+
+// --- Phase 3: PEG parsing features ---
+
+TEST(test_peg_branches) {
+  const char* src = "[[vpa]]\n"
+                    "main = {\n"
+                    "  /a/ @tok_a\n"
+                    "  /b/ @tok_b\n"
+                    "  /c/ @tok_c\n"
+                    "}\n"
+                    "[[peg]]\n"
+                    "main = [\n"
+                    "  branch_a: @tok_a\n"
+                    "  branch_b: @tok_b\n"
+                    "  branch_c: @tok_c\n"
+                    "]\n";
+  char* hdr_buf = NULL;
+  size_t hdr_sz = 0;
+  char* ir_buf = NULL;
+  size_t ir_sz = 0;
+  _gen_output(src, &hdr_buf, &hdr_sz, &ir_buf, &ir_sz);
+  assert(hdr_sz > 0 && ir_sz > 0);
+  // branch tag bitfields
+  assert(strstr(hdr_buf, "bool branch_a : 1"));
+  assert(strstr(hdr_buf, "bool branch_b : 1"));
+  assert(strstr(hdr_buf, "bool branch_c : 1"));
+  // load function extracts branch_id
+  assert(strstr(hdr_buf, "branch_id"));
+  assert(strstr(hdr_buf, "node.is.branch_a"));
+  assert(strstr(hdr_buf, "node.is.branch_b"));
+  assert(strstr(hdr_buf, "node.is.branch_c"));
+  // IR has backtracking
+  assert(strstr(ir_buf, "backtrack_push"));
+  assert(strstr(ir_buf, "backtrack_restore"));
+  free(hdr_buf);
+  free(ir_buf);
+}
+
+TEST(test_peg_multipliers) {
+  const char* src = "[[vpa]]\n"
+                    "main = {\n"
+                    "  /a/ @tok_a\n"
+                    "  /b/ @tok_b\n"
+                    "  /c/ @tok_c\n"
+                    "}\n"
+                    "[[peg]]\n"
+                    "main = @tok_a? @tok_b+ @tok_c*\n";
+  char* hdr_buf = NULL;
+  size_t hdr_sz = 0;
+  char* ir_buf = NULL;
+  size_t ir_sz = 0;
+  _gen_output(src, &hdr_buf, &hdr_sz, &ir_buf, &ir_sz);
+  assert(hdr_sz > 0 && ir_sz > 0);
+  // node struct with next_col for + and * children
+  assert(strstr(hdr_buf, "MainNode"));
+  assert(strstr(hdr_buf, "next_col"));
+  // IR: parse function with match_tok calls
+  assert(strstr(ir_buf, "define i32 @parse_main"));
+  assert(strstr(ir_buf, "@match_tok"));
+  free(hdr_buf);
+  free(ir_buf);
+}
+
+TEST(test_peg_interlace) {
+  const char* src = "[[vpa]]\n"
+                    "main = {\n"
+                    "  /a/ @tok_a\n"
+                    "  /,/ @tok_comma\n"
+                    "}\n"
+                    "[[peg]]\n"
+                    "main = @tok_a+<@tok_comma>\n";
+  char* hdr_buf = NULL;
+  size_t hdr_sz = 0;
+  char* ir_buf = NULL;
+  size_t ir_sz = 0;
+  _gen_output(src, &hdr_buf, &hdr_sz, &ir_buf, &ir_sz);
+  assert(hdr_sz > 0 && ir_sz > 0);
+  assert(strstr(hdr_buf, "MainNode"));
+  assert(strstr(hdr_buf, "next_col"));
+  // IR: interlace loop has two match_tok calls (separator + element)
+  assert(strstr(ir_buf, "define i32 @parse_main"));
+  // at least 2 match_tok calls for interlace pattern
+  char* first = strstr(ir_buf, "@match_tok");
+  assert(first);
+  assert(strstr(first + 1, "@match_tok"));
+  free(hdr_buf);
+  free(ir_buf);
+}
+
+TEST(test_peg_tags) {
+  const char* src = "[[vpa]]\n"
+                    "main = {\n"
+                    "  /a/ @tok_a\n"
+                    "  /b/ @tok_b\n"
+                    "}\n"
+                    "[[peg]]\n"
+                    "main = [\n"
+                    "  first: @tok_a\n"
+                    "  second: @tok_b\n"
+                    "]\n";
+  char* hdr_buf = NULL;
+  size_t hdr_sz = 0;
+  char* ir_buf = NULL;
+  size_t ir_sz = 0;
+  _gen_output(src, &hdr_buf, &hdr_sz, &ir_buf, &ir_sz);
+  assert(hdr_sz > 0 && ir_sz > 0);
+  assert(strstr(hdr_buf, "bool first : 1"));
+  assert(strstr(hdr_buf, "bool second : 1"));
+  assert(strstr(hdr_buf, "node.is.first"));
+  assert(strstr(hdr_buf, "node.is.second"));
+  free(hdr_buf);
+  free(ir_buf);
+}
+
+TEST(test_peg_subrule_ref) {
+  const char* src = "[[vpa]]\n"
+                    "main = {\n"
+                    "  /a/ @tok_a\n"
+                    "  /b/ @tok_b\n"
+                    "}\n"
+                    "[[peg]]\n"
+                    "main = item+\n"
+                    "item = @tok_a @tok_b\n";
+  char* hdr_buf = NULL;
+  size_t hdr_sz = 0;
+  char* ir_buf = NULL;
+  size_t ir_sz = 0;
+  _gen_output(src, &hdr_buf, &hdr_sz, &ir_buf, &ir_sz);
+  assert(hdr_sz > 0 && ir_sz > 0);
+  // both rules get node types and parse functions
+  assert(strstr(hdr_buf, "MainNode"));
+  assert(strstr(hdr_buf, "ItemNode"));
+  assert(strstr(ir_buf, "define i32 @parse_main"));
+  assert(strstr(ir_buf, "define i32 @parse_item"));
+  // main calls item
+  assert(strstr(ir_buf, "@parse_item("));
+  free(hdr_buf);
+  free(ir_buf);
+}
+
+TEST(test_peg_auto_tag) {
+  const char* src = "[[vpa]]\n"
+                    "main = {\n"
+                    "  /a/ @tok_a\n"
+                    "  /b/ @tok_b\n"
+                    "}\n"
+                    "[[peg]]\n"
+                    "main = [\n"
+                    "  @tok_a\n"
+                    "  @tok_b\n"
+                    "]\n";
+  char* hdr_buf = NULL;
+  size_t hdr_sz = 0;
+  char* ir_buf = NULL;
+  size_t ir_sz = 0;
+  _gen_output(src, &hdr_buf, &hdr_sz, &ir_buf, &ir_sz);
+  assert(hdr_sz > 0 && ir_sz > 0);
+  // auto-tagging names branches after first child token
+  assert(strstr(hdr_buf, "bool tok_a : 1"));
+  assert(strstr(hdr_buf, "bool tok_b : 1"));
+  assert(strstr(hdr_buf, "branch_id"));
+  free(hdr_buf);
+  free(ir_buf);
+}
+
+TEST(test_peg_cross_bracket_dup_tag) {
+  const char* src = "[[vpa]]\n"
+                    "main = {\n"
+                    "  /a/ @tok_a\n"
+                    "  /b/ @tok_b\n"
+                    "  /c/ @tok_c\n"
+                    "  /d/ @tok_d\n"
+                    "}\n"
+                    "[[peg]]\n"
+                    "main = [\n"
+                    "  dup: @tok_a\n"
+                    "  other: @tok_b\n"
+                    "] [\n"
+                    "  dup: @tok_c\n"
+                    "  another: @tok_d\n"
+                    "]\n";
+  assert(!_gen_succeeds(src));
+}
+
+// --- Phase 4: Post-processing ---
+
+TEST(test_keyword_expansion) {
+  // %keyword: group name matches a rule, expansion adds regexp units to it
+  const char* src = "[[vpa]]\n"
+                    "%ignore @space\n"
+                    "%keyword kw \"if\" \"else\"\n"
+                    "main = {\n"
+                    "  kw\n"
+                    "  /[a-z]+/ @id\n"
+                    "  /[ \\t\\n]+/ @space\n"
+                    "}\n"
+                    "kw = {\n"
+                    "}\n"
+                    "[[peg]]\n"
+                    "main = @if @id @else @id\n";
+  char* hdr_buf = NULL;
+  size_t hdr_sz = 0;
+  char* ir_buf = NULL;
+  size_t ir_sz = 0;
+  _gen_output(src, &hdr_buf, &hdr_sz, &ir_buf, &ir_sz);
+  assert(hdr_sz > 0 && ir_sz > 0);
+  // keyword expansion produces token defs with group.literal naming
+  assert(strstr(hdr_buf, "KW_IF") || strstr(hdr_buf, "kw.if"));
+  assert(strstr(hdr_buf, "KW_ELSE") || strstr(hdr_buf, "kw.else"));
+  free(hdr_buf);
+  free(ir_buf);
+}
+
+TEST(test_keyword_multiple_groups) {
+  const char* src = "[[vpa]]\n"
+                    "%ignore @space\n"
+                    "%keyword kw \"if\"\n"
+                    "%keyword ty \"int\"\n"
+                    "main = {\n"
+                    "  kw\n"
+                    "  ty\n"
+                    "  /[a-z]+/ @id\n"
+                    "  /[ \\t\\n]+/ @space\n"
+                    "}\n"
+                    "kw = {\n"
+                    "}\n"
+                    "ty = {\n"
+                    "}\n"
+                    "[[peg]]\n"
+                    "main = @if @int @id\n";
+  assert(_gen_succeeds(src));
+}
+
+TEST(test_macro_inline_nested) {
+  const char* src = "[[vpa]]\n"
+                    "%ignore @space @nl\n"
+                    "*ws = {\n"
+                    "  /[ \\t]+/ @space\n"
+                    "  /\\n+/ @nl\n"
+                    "}\n"
+                    "main = {\n"
+                    "  /x/ @tok_a\n"
+                    "  *ws\n"
+                    "}\n"
+                    "[[peg]]\n"
+                    "main = @tok_a\n";
+  assert(_gen_succeeds(src));
+}
+
+TEST(test_macro_undefined) {
+  // undefined macro ref remains as a unit, causing token set mismatch
+  const char* src = "[[vpa]]\n"
+                    "main = {\n"
+                    "  /x/ @tok_a\n"
+                    "  *nonexistent\n"
+                    "}\n"
+                    "[[peg]]\n"
+                    "main = @tok_a\n";
+  assert(!_gen_succeeds(src));
+}
+
+// --- Phase 5: DFA lexer edge cases ---
+
+TEST(test_lex_invalid_utf8) {
+  const char* src = "[[vpa]]\n\x80\x81\n";
+  assert(!_gen_succeeds(src));
+}
+
+TEST(test_lex_single_quote_str) {
+  const char* src = "[[vpa]]\n"
+                    "%ignore @space\n"
+                    "main = {\n"
+                    "  'hello' @tok_hello\n"
+                    "  /[ \\t\\n]+/ @space\n"
+                    "}\n"
+                    "[[peg]]\n"
+                    "main = @tok_hello\n";
+  assert(_gen_succeeds(src));
+}
+
+TEST(test_lex_negated_charclass) {
+  const char* src = "[[vpa]]\n"
+                    "main = {\n"
+                    "  /[^abc]+/ @tok_a\n"
+                    "}\n"
+                    "[[peg]]\n"
+                    "main = @tok_a\n";
+  assert(_gen_succeeds(src));
+}
+
+TEST(test_lex_charclass_escape) {
+  const char* src = "[[vpa]]\n"
+                    "main = {\n"
+                    "  /[a-z\\d]+/ @tok_a\n"
+                    "}\n"
+                    "[[peg]]\n"
+                    "main = @tok_a\n";
+  assert(_gen_succeeds(src));
+}
+
+TEST(test_lex_unicode_escape) {
+  const char* src = "[[vpa]]\n"
+                    "main = {\n"
+                    "  /\\u{0041}/ @tok_a\n"
+                    "}\n"
+                    "[[peg]]\n"
+                    "main = @tok_a\n";
+  assert(_gen_succeeds(src));
+}
+
+TEST(test_lex_bof_eof) {
+  const char* src = "[[vpa]]\n"
+                    "main = {\n"
+                    "  /\\a[a-z]+\\z/ @tok_a\n"
+                    "}\n"
+                    "[[peg]]\n"
+                    "main = @tok_a\n";
+  assert(_gen_succeeds(src));
+}
+
 int main(void) {
   printf("test_parse:\n");
 
@@ -342,6 +838,46 @@ int main(void) {
   RUN(test_validate_ignored_tokens_excluded);
   RUN(test_validate_peg_subrule_tokens);
   RUN(test_validate_scope_tokens_not_mixed);
+
+  // Phase 1: Validation error paths
+  RUN(test_err_missing_main);
+  RUN(test_err_scope_missing_end);
+  RUN(test_err_undeclared_state);
+  RUN(test_err_empty_input);
+  RUN(test_err_no_vpa_section);
+  RUN(test_err_trailing_tokens);
+
+  // Phase 2: VPA parsing features
+  RUN(test_vpa_str_span);
+  RUN(test_vpa_state_ref);
+  RUN(test_vpa_pipe);
+  RUN(test_vpa_macro);
+  RUN(test_vpa_user_hook);
+  RUN(test_vpa_fail_hook);
+  RUN(test_vpa_unparse_hook);
+
+  // Phase 3: PEG parsing features
+  RUN(test_peg_branches);
+  RUN(test_peg_multipliers);
+  RUN(test_peg_interlace);
+  RUN(test_peg_tags);
+  RUN(test_peg_subrule_ref);
+  RUN(test_peg_auto_tag);
+  RUN(test_peg_cross_bracket_dup_tag);
+
+  // Phase 4: Post-processing
+  RUN(test_keyword_expansion);
+  RUN(test_keyword_multiple_groups);
+  RUN(test_macro_inline_nested);
+  RUN(test_macro_undefined);
+
+  // Phase 5: DFA lexer edge cases
+  RUN(test_lex_invalid_utf8);
+  RUN(test_lex_single_quote_str);
+  RUN(test_lex_negated_charclass);
+  RUN(test_lex_charclass_escape);
+  RUN(test_lex_unicode_escape);
+  RUN(test_lex_bof_eof);
 
   printf("all ok\n");
   return 0;

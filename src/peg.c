@@ -10,6 +10,7 @@
 #include "graph.h"
 #include "peg_ir.h"
 
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -302,9 +303,7 @@ static PegUnit** _collect_branches(PegRule* rule) {
 
 static void _make_struct_name(PegRule* rule, char* out, int32_t out_size) {
   snprintf(out, (size_t)out_size, "%sNode", rule->name);
-  if (out[0] >= 'a' && out[0] <= 'z') {
-    out[0] -= 32;
-  }
+  out[0] = (char)toupper((unsigned char)out[0]);
 }
 
 // --- Header generation ---
@@ -401,6 +400,33 @@ static void _define_col_type_ir(IrWriter* w, ScopeCtx* scope) {
 
 // --- Load function generation ---
 
+static void _emit_child_load(HeaderWriter* hw, PegUnit* child, const char* cur_var, int32_t indent) {
+  const char* sp = indent >= 2 ? "    " : "  ";
+  const char* inner = indent >= 2 ? "      " : "    ";
+  const char* var = (child->name && child->name[0]) ? child->name : NULL;
+
+  if (var) {
+    hw_fmt(hw, "%snode.%s = (PegRef){table, %s, -1};\n", sp, var, cur_var);
+  }
+
+  if (child->kind == PEG_ID) {
+    if (var) {
+      hw_fmt(hw, "%s{ int32_t l = parse_%s((void*)table, %s);\n", sp, var, cur_var);
+      hw_fmt(hw, "%sif (l < 0) l = 0;\n", inner);
+      if (child->multiplier == '+' || child->multiplier == '*') {
+        hw_fmt(hw, "%snode.%s.next_col = %s + l;\n", inner, var, cur_var);
+      }
+      hw_fmt(hw, "%s%s += l; }\n", inner, cur_var);
+    } else {
+      hw_fmt(hw, "%s{ int32_t l = parse_%s((void*)table, %s);\n", sp, child->name, cur_var);
+      hw_fmt(hw, "%sif (l < 0) l = 0;\n", inner);
+      hw_fmt(hw, "%s%s += l; }\n", inner, cur_var);
+    }
+  } else if (child->kind == PEG_TOK) {
+    hw_fmt(hw, "%s%s += 1;\n", sp, cur_var);
+  }
+}
+
 static void _gen_load_impl(HeaderWriter* hw, PegRule* rule, RuleInfo* ri, ScopeCtx* scopes) {
   char struct_name[128];
   _make_struct_name(rule, struct_name, sizeof(struct_name));
@@ -424,7 +450,6 @@ static void _gen_load_impl(HeaderWriter* hw, PegRule* rule, RuleInfo* ri, ScopeC
     hw_fmt(hw, "  int32_t packed = table[col].slots[%d];\n", ri->slot_idx);
     hw_fmt(hw, "  int32_t branch_id = packed >> 16;\n");
 
-    // Walk seq children: for non-BRANCHES children advance cur, for BRANCHES decode
     int32_t branch_idx = 0;
     for (int32_t i = 0; i < (int32_t)darray_size(rule->seq.children); i++) {
       PegUnit* child = &rule->seq.children[i];
@@ -444,62 +469,18 @@ static void _gen_load_impl(HeaderWriter* hw, PegRule* rule, RuleInfo* ri, ScopeC
           hw_fmt(hw, "  if (branch_id == %d) {\n", bid);
           hw_fmt(hw, "    int32_t bcur = cur;\n");
           for (int32_t j = 0; j < (int32_t)darray_size(branch->children); j++) {
-            PegUnit* bc = &branch->children[j];
-            if (bc->name && bc->name[0]) {
-              hw_fmt(hw, "    node.%s = (PegRef){table, bcur, -1};\n", bc->name);
-            }
-            if (bc->kind == PEG_ID && bc->name) {
-              hw_fmt(hw, "    { int32_t l = parse_%s((void*)table, bcur);\n", bc->name);
-              hw_fmt(hw, "      if (l < 0) l = 0;\n");
-              if (bc->name && bc->name[0] && (bc->multiplier == '+' || bc->multiplier == '*')) {
-                hw_fmt(hw, "      node.%s.next_col = bcur + l;\n", bc->name);
-              }
-              hw_fmt(hw, "      bcur += l; }\n");
-            } else if (bc->kind == PEG_TOK) {
-              hw_fmt(hw, "    bcur += 1;\n");
-            }
+            _emit_child_load(hw, &branch->children[j], "bcur", 2);
           }
           hw_fmt(hw, "  }\n");
         }
         branch_idx += bn;
       } else {
-        // Non-branch child in sequence (before or between bracket groups)
-        if (child->name && child->name[0]) {
-          hw_fmt(hw, "  node.%s = (PegRef){table, cur, -1};\n", child->name);
-        }
-        if (child->kind == PEG_ID && child->name) {
-          hw_fmt(hw, "  { int32_t l = parse_%s((void*)table, cur);\n", child->name);
-          hw_fmt(hw, "    if (l < 0) l = 0;\n");
-          if (child->name && child->name[0] && (child->multiplier == '+' || child->multiplier == '*')) {
-            hw_fmt(hw, "    node.%s.next_col = cur + l;\n", child->name);
-          }
-          hw_fmt(hw, "    cur += l; }\n");
-        } else if (child->kind == PEG_TOK) {
-          hw_fmt(hw, "  cur += 1;\n");
-        }
+        _emit_child_load(hw, child, "cur", 1);
       }
     }
   } else {
     for (int32_t i = 0; i < (int32_t)darray_size(rule->seq.children); i++) {
-      PegUnit* child = &rule->seq.children[i];
-      if (child->name && child->name[0]) {
-        hw_fmt(hw, "  node.%s = (PegRef){table, cur, -1};\n", child->name);
-      }
-
-      if (child->kind == PEG_ID && child->name && child->name[0]) {
-        hw_fmt(hw, "  int32_t len_%d = parse_%s((void*)table, cur);\n", i, child->name);
-        hw_fmt(hw, "  if (len_%d < 0) len_%d = 0;\n", i, i);
-        if (child->multiplier == '+' || child->multiplier == '*') {
-          hw_fmt(hw, "  node.%s.next_col = cur + len_%d;\n", child->name, i);
-        }
-        hw_fmt(hw, "  cur += len_%d;\n", i);
-      } else if (child->kind == PEG_ID) {
-        hw_fmt(hw, "  int32_t len_%d = parse_%s((void*)table, cur);\n", i, child->name);
-        hw_fmt(hw, "  if (len_%d < 0) len_%d = 0;\n", i, i);
-        hw_fmt(hw, "  cur += len_%d;\n", i);
-      } else if (child->kind == PEG_TOK) {
-        hw_raw(hw, "  cur += 1;\n");
-      }
+      _emit_child_load(hw, &rule->seq.children[i], "cur", 1);
     }
   }
 
