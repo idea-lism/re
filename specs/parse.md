@@ -36,8 +36,7 @@ The overall handling with this syntax:
 
 Resulting interface:
 
-- `parse_state_new()`, `parse_state_del()`
-- `bool parse_nest(const char* src)`
+- `parse_nest(const char* src, HeaderWriter* header_writer, IrWriter* ir_writer)`
 
 For reference, file `specs/bootstrap.nest` contains the full syntax definition in its own syntax.
 
@@ -162,9 +161,9 @@ typedef ScopeConfigs ScopeConfig*;
 
 struct ScopeConfig {
   int32_t scope_id;
-  LexFn fn;
-  int32_t ignore_tokens[];
   int32_t end_token;
+  LexFunc fn;
+  int32_t ignore_tokens[];
   int32_t sub_scopes[];
 }
 ```

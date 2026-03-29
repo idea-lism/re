@@ -5,8 +5,6 @@
 
 #include "parse.h"
 #include "darray.h"
-#include "header_writer.h"
-#include "irwriter.h"
 #include "peg.h"
 #include "re_ast.h"
 #include "token_chunk.h"
@@ -29,11 +27,12 @@ typedef struct {
 
 extern LexResult lex_main(int64_t state, int64_t cp);
 extern LexResult lex_vpa(int64_t state, int64_t cp);
-extern LexResult lex_re(int64_t state, int64_t cp);
-extern LexResult lex_charclass(int64_t state, int64_t cp);
-extern LexResult lex_dquote_str(int64_t state, int64_t cp);
-extern LexResult lex_squote_str(int64_t state, int64_t cp);
 extern LexResult lex_peg(int64_t state, int64_t cp);
+extern LexResult lex_re(int64_t state, int64_t cp);
+extern LexResult lex_re_ref(int64_t state, int64_t cp);
+extern LexResult lex_re_str(int64_t state, int64_t cp);
+extern LexResult lex_charclass(int64_t state, int64_t cp);
+extern LexResult lex_keyword_str(int64_t state, int64_t cp);
 
 #define LEX_ACTION_NOMATCH (-2)
 
@@ -46,35 +45,12 @@ typedef struct {
   int32_t len;
 } StrSpan;
 
-// --- Parser state ---
-
-typedef struct {
-  const char* src;
-  int32_t src_len;
-  char* ustr;
-
-  TokenChunk main_chunk;
-  int32_t tpos;
-
-  ReAstNode** re_asts; // darray
-  StrSpan* str_spans;  // darray
-
-  VpaRule* vpa_rules;     // darray
-  KeywordEntry* keywords; // darray
-  IgnoreSet ignores;
-  StateDecl* states;   // darray
-  EffectDecl* effects; // darray
-  PegRule* peg_rules;  // darray
-
-  char error[512];
-} ParseState;
-
 // --- Error reporting ---
 
-static bool _has_error(ParseState* ps) { return ps->error[0] != '\0'; }
+bool parse_has_error(ParseState* ps) { return ps->error[0] != '\0'; }
 
 static void _error_at(ParseState* ps, Token* t, const char* fmt, ...) {
-  if (_has_error(ps)) {
+  if (parse_has_error(ps)) {
     return;
   }
   int32_t off = 0;
@@ -87,8 +63,8 @@ static void _error_at(ParseState* ps, Token* t, const char* fmt, ...) {
   va_end(ap);
 }
 
-static void _error(ParseState* ps, const char* fmt, ...) {
-  if (_has_error(ps)) {
+void parse_error(ParseState* ps, const char* fmt, ...) {
+  if (parse_has_error(ps)) {
     return;
   }
   va_list ap;
@@ -118,7 +94,7 @@ static char* _tok_strdup_skip(ParseState* ps, Token* t, int32_t skip) {
   return s;
 }
 
-__attribute__((format(printf, 1, 2))) static char* _sfmt(const char* fmt, ...) {
+__attribute__((format(printf, 1, 2))) char* parseparse_sfmt(const char* fmt, ...) {
   va_list ap;
   va_start(ap, fmt);
   int32_t len = vsnprintf(NULL, 0, fmt, ap);
@@ -130,7 +106,7 @@ __attribute__((format(printf, 1, 2))) static char* _sfmt(const char* fmt, ...) {
   return s;
 }
 
-static void _set_str(char** dst, char* s) {
+void parseparse_set_str(char** dst, char* s) {
   free(*dst);
   *dst = s;
 }
@@ -161,30 +137,23 @@ static StrSpan _build_str_span(TokenChunk* chunk) {
 #define TOK_RE_AST_BASE 20000
 #define TOK_STR_SPAN_BASE 30000
 
-typedef enum {
-  SCOPE_MAIN,
-  SCOPE_VPA,
-  SCOPE_PEG,
-  SCOPE_RE,
-  SCOPE_CHARCLASS,
-  SCOPE_DQUOTE_STR,
-  SCOPE_SQUOTE_STR,
-} ScopeId;
-
-typedef struct {
-  ScopeId id;
-  LexFunc lex_fn;
-  int32_t end_token;
-} ScopeConfig;
-
 typedef struct {
   ParseState* ps;
   char* ustr;
   int32_t byte_size;
-  UstrIter it;
   int32_t pos;
+  UstrIter it;
   ReAstNode* cc_asts; // darray - charclass ASTs for current re scope
+  const char* last_quote;
 } LexCtx;
+
+typedef struct {
+  ScopeId id;
+  int32_t end_token;
+  LexFunc lex_fn;
+  const int32_t* ignore_tokens;
+  const int32_t* sub_scopes;
+} ScopeConfig;
 
 static int32_t _next_cp(LexCtx* ctx) {
   if (ctx->it.byte_off >= ctx->byte_size) {
@@ -193,236 +162,68 @@ static int32_t _next_cp(LexCtx* ctx) {
   return ustr_iter_next(&ctx->it);
 }
 
-static TokenChunk _lex_scope(LexCtx* ctx, ScopeConfig* cfg) {
-  TokenChunk chunk = NULL;
-  tc_init(&chunk);
-  
-  int64_t state = 0;
-  int32_t last_action = 0;
-  int32_t tok_start = ctx->it.byte_off;
-  int32_t tok_line = ctx->it.line;
-  int32_t tok_col = ctx->it.col;
-  
-  while (ctx->pos < ctx->ps->src_len) {
-    int32_t cp_byte = ctx->it.byte_off;
-    int32_t cp_line = ctx->it.line;
-    int32_t cp_col = ctx->it.col;
-    int32_t cp = _next_cp(ctx);
-    
-    LexResult r = cfg->lex_fn(state, cp);
-    
-    if (r.action == LEX_ACTION_NOMATCH) {
-      if (last_action > 0) {
-        if (last_action == cfg->end_token) {
-          ctx->pos = ctx->it.byte_off;
-          return chunk;
-        }
-        if (last_action != TOK_COMMENT && last_action != TOK_SPACE) {
-          tc_add(&chunk, (Token){last_action, tok_start, cp_byte, tok_line, tok_col});
-        }
-      }
-      tok_start = cp_byte;
-      tok_line = cp_line;
-      tok_col = cp_col;
-      last_action = 0;
-      state = 0;
-      if (cp == -2) break;
-      r = cfg->lex_fn(0, cp);
-      if (r.action == LEX_ACTION_NOMATCH) {
-        tok_start = ctx->it.byte_off;
-        tok_line = ctx->it.line;
-        tok_col = ctx->it.col;
-        ctx->pos = ctx->it.byte_off;
-        continue;
-      }
-    }
-    last_action = (int32_t)r.action;
-    state = r.state;
-    ctx->pos = ctx->it.byte_off;
-    if (cp == -2) break;
-  }
-  return chunk;
-}
+static TokenChunk _lex_main(LexCtx* ctx);
+static TokenChunk _lex_vpa(LexCtx* ctx);
+static TokenChunk _lex_peg(LexCtx* ctx);
+static TokenChunk _lex_re(LexCtx* ctx);
+static TokenChunk _lex_re_ref(LexCtx* ctx);
+static TokenChunk _lex_re_str(LexCtx* ctx);
+static TokenChunk _lex_charclass(LexCtx* ctx);
+static TokenChunk _lex_keyword_str(LexCtx* ctx);
 
-static ReAstNode _lex_charclass(LexCtx* ctx, bool negated) {
-  ScopeConfig cfg = {.id = SCOPE_CHARCLASS, .lex_fn = lex_charclass, .end_token = TOK_CLASS_END};
-  TokenChunk chunk = _lex_scope(ctx, &cfg);
-  ReToken* rtoks = _to_re_tokens(chunk, tc_size(chunk));
-  ReAstNode ast = re_ast_build_charclass(ctx->ps->src, rtoks, tc_size(chunk), negated);
-  free(rtoks);
-  tc_free(&chunk);
-  return ast;
-}
-
-static TokenChunk _lex_str(LexCtx* ctx, char quote) {
-  LexFunc lex_fn = (quote == '"') ? lex_dquote_str : lex_squote_str;
-  ScopeConfig cfg = {.id = (quote == '"') ? SCOPE_DQUOTE_STR : SCOPE_SQUOTE_STR, .lex_fn = lex_fn, .end_token = TOK_STR_END};
-  return _lex_scope(ctx, &cfg);
-}
-
-static TokenChunk _lex_re(LexCtx* ctx) {
-  ctx->cc_asts = darray_new(sizeof(ReAstNode), 0);
-  TokenChunk chunk = NULL;
-  tc_init(&chunk);
-  
-  int64_t state = 0;
-  int32_t last_action = 0;
-  int32_t tok_start = ctx->it.byte_off;
-  int32_t tok_line = ctx->it.line;
-  int32_t tok_col = ctx->it.col;
-  
-  while (ctx->pos < ctx->ps->src_len) {
-    int32_t cp_byte = ctx->it.byte_off;
-    int32_t cp_line = ctx->it.line;
-    int32_t cp_col = ctx->it.col;
-    int32_t cp = _next_cp(ctx);
-    
-    LexResult r = lex_re(state, cp);
-    
-    if (r.action == LEX_ACTION_NOMATCH) {
-      if (last_action > 0) {
-        if (last_action == TOK_RE_END) {
-          ctx->pos = ctx->it.byte_off;
-          return chunk;
-        }
-        if (last_action == TOK_NEG_CLASS_BEGIN || last_action == TOK_CLASS_BEGIN) {
-          ReAstNode cc_ast = _lex_charclass(ctx, last_action == TOK_NEG_CLASS_BEGIN);
-          darray_push(ctx->cc_asts, cc_ast);
-          tc_add(&chunk, (Token){RE_AST_TOK_CHARCLASS_BASE + (int32_t)darray_size(ctx->cc_asts) - 1,
-                                 tok_start, ctx->it.byte_off, tok_line, tok_col});
-          tok_start = ctx->it.byte_off;
-          tok_line = ctx->it.line;
-          tok_col = ctx->it.col;
-          last_action = 0;
-          state = 0;
-          continue;
-        }
-        if (last_action != TOK_COMMENT && last_action != TOK_SPACE) {
-          tc_add(&chunk, (Token){last_action, tok_start, cp_byte, tok_line, tok_col});
-        }
-      }
-      tok_start = cp_byte;
-      tok_line = cp_line;
-      tok_col = cp_col;
-      last_action = 0;
-      state = 0;
-      if (cp == -2) break;
-      r = lex_re(0, cp);
-      if (r.action == LEX_ACTION_NOMATCH) {
-        tok_start = ctx->it.byte_off;
-        tok_line = ctx->it.line;
-        tok_col = ctx->it.col;
-        ctx->pos = ctx->it.byte_off;
-        continue;
-      }
-    }
-    last_action = (int32_t)r.action;
-    state = r.state;
-    ctx->pos = ctx->it.byte_off;
-    if (cp == -2) break;
-  }
-  return chunk;
-}
-
-static bool _lex_with_dfa(ParseState* ps) {
-  char* ustr = ustr_new((size_t)ps->src_len, ps->src);
-  if (!ustr) {
-    _error(ps, "invalid UTF-8 source");
-    return false;
-  }
-
-  LexCtx ctx = {
-    .ps = ps,
-    .ustr = ustr,
-    .byte_size = ustr_bytesize(ustr),
-    .pos = 0,
-    .cc_asts = NULL,
+static TokenChunk _lex_scope(LexCtx* ctx, ScopeId scope_id) {
+  static const int32_t main_ignore[] = {IGNORED_COMMENT, IGNORED_SPACE, -1};
+  static const int32_t main_children[] = {SCOPE_VPA, SCOPE_PEG, -1};
+  static const int32_t vpa_ignore[] = {IGNORED_COMMENT, IGNORED_SPACE, IGNORED_PEG, -1};
+  static const int32_t vpa_children[] = {SCOPE_RE, SCOPE_RE_STR, -1};
+  static const int32_t peg_ignore[] = {IGNORED_COMMENT, IGNORED_SPACE, -1};
+  static const int32_t peg_children[] = {SCOPE_KEYWORD_STR, -1};
+  static const int32_t re_ignore[] = {-1};
+  static const int32_t re_children[] = {SCOPE_CHARCLASS, -1};
+  static const int32_t re_ref_ignore[] = {-1};
+  static const int32_t re_ref_children[] = {-1};
+  static const int32_t re_str_ignore[] = {-1};
+  static const int32_t re_str_children[] = {-1};
+  static const int32_t charclass_ignore[] = {-1};
+  static const int32_t charclass_children[] = {-1};
+  static const int32_t keyword_str_ignore[] = {-1};
+  static const int32_t keyword_str_children[] = {-1};
+  static const ScopeConfig configs[] = {
+      [SCOPE_MAIN] = {SCOPE_MAIN, -1, lex_main, main_ignore, main_children},
+      [SCOPE_VPA] = {SCOPE_VPA, IGNORE_PEG, lex_vpa, vpa_ignore, vpa_children},
+      [SCOPE_PEG] = {SCOPE_PEG, -1, lex_peg, peg_ignore, peg_children},
+      [SCOPE_RE] = {SCOPE_RE, IGNORE_RE_END, lex_re, re_ignore, re_children},
+      [SCOPE_RE_REF] = {SCOPE_RE_REF, IGNORE_RE_REF_END, lex_re_ref, re_ref_ignore, re_ref_children},
+      [SCOPE_RE_STR] = {SCOPE_RE_STR, STATE_LAST_QUOTE, lex_re_str, re_str_ignore, re_str_children},
+      [SCOPE_CHARCLASS] = {SCOPE_CHARCLASS, IGNORE_CHARCLASS_END, lex_charclass, charclass_ignore, charclass_children},
+      [SCOPE_KEYWORD_STR] = {SCOPE_KEYWORD_STR, STATE_LAST_QUOTE, lex_keyword_str, keyword_str_ignore, keyword_str_children},
   };
-  ustr_iter_init(&ctx.it, ustr, 0);
-
-  LexFunc cur_lex = lex_main;
+  ScopeConfig cfg = configs[scope_id];
+  TokenChunk chunk = NULL;
+  tc_init(&chunk);
+  
   int64_t state = 0;
   int32_t last_action = 0;
-  int32_t tok_start = 0;
-  int32_t tok_line = 1;
-  int32_t tok_col = 1;
-
-  while (ctx.pos < ps->src_len) {
-    int32_t cp_byte = ctx.it.byte_off;
-    int32_t cp_line = ctx.it.line;
-    int32_t cp_col = ctx.it.col;
-    int32_t cp = _next_cp(&ctx);
-
-    LexResult r = cur_lex(state, cp);
-
+  int32_t tok_start = ctx->it.byte_off;
+  int32_t tok_line = ctx->it.line;
+  int32_t tok_col = ctx->it.col;
+  
+  while (ctx->pos < ctx->ps->src_len) {
+    int32_t cp_byte = ctx->it.byte_off;
+    int32_t cp_line = ctx->it.line;
+    int32_t cp_col = ctx->it.col;
+    int32_t cp = _next_cp(ctx);
+    
+    LexResult r = cfg.lex_fn(state, cp);
+    
     if (r.action == LEX_ACTION_NOMATCH) {
       if (last_action > 0) {
-        if (last_action == TOK_SECTION_VPA || last_action == TOK_SECTION_PEG) {
-          cur_lex = (last_action == TOK_SECTION_VPA) ? lex_vpa : lex_peg;
-          tok_start = cp_byte;
-          tok_line = cp_line;
-          tok_col = cp_col;
-          last_action = 0;
-          state = 0;
-          if (cp != -2) {
-            r = cur_lex(0, cp);
-            if (r.action != LEX_ACTION_NOMATCH) {
-              last_action = (int32_t)r.action;
-              state = r.state;
-              ctx.pos = ctx.it.byte_off;
-              continue;
-            }
-            tok_start = ctx.it.byte_off;
-            tok_line = ctx.it.line;
-            tok_col = ctx.it.col;
-            ctx.pos = ctx.it.byte_off;
-            continue;
-          }
-          break;
+        if (last_action == cfg.end_token) {
+          ctx->pos = ctx->it.byte_off;
+          return chunk;
         }
-        if (last_action == TOK_RE_BEGIN) {
-          TokenChunk re_chunk = _lex_re(&ctx);
-          int32_t re_ntok = tc_size(re_chunk);
-          ReToken* re_rtoks = _to_re_tokens(re_chunk, re_ntok);
-          ReAstNode* ast = re_ast_build_re(ps->src, re_rtoks, re_ntok, ctx.cc_asts,
-                                           ctx.cc_asts ? (int32_t)darray_size(ctx.cc_asts) : 0);
-          free(re_rtoks);
-          darray_del(re_chunk);
-          darray_del(ctx.cc_asts);
-          ctx.cc_asts = NULL;
-          if (!ps->re_asts) {
-            ps->re_asts = darray_new(sizeof(ReAstNode*), 0);
-          }
-          darray_push(ps->re_asts, ast);
-          tc_add(&ps->main_chunk, (Token){TOK_RE_AST_BASE + (int32_t)darray_size(ps->re_asts) - 1,
-                                          tok_start, ctx.it.byte_off, tok_line, tok_col});
-          tok_start = ctx.it.byte_off;
-          tok_line = ctx.it.line;
-          tok_col = ctx.it.col;
-          last_action = 0;
-          state = 0;
-          continue;
-        }
-        if (last_action == TOK_STR_BEGIN) {
-          char quote = ps->src[tok_start];
-          TokenChunk str_chunk = _lex_str(&ctx, quote);
-          StrSpan span = _build_str_span(&str_chunk);
-          tc_free(&str_chunk);
-          if (!ps->str_spans) {
-            ps->str_spans = darray_new(sizeof(StrSpan), 0);
-          }
-          darray_push(ps->str_spans, span);
-          tc_add(&ps->main_chunk, (Token){TOK_STR_SPAN_BASE + (int32_t)darray_size(ps->str_spans) - 1,
-                                          tok_start, ctx.it.byte_off, tok_line, tok_col});
-          tok_start = ctx.it.byte_off;
-          tok_line = ctx.it.line;
-          tok_col = ctx.it.col;
-          last_action = 0;
-          state = 0;
-          continue;
-        }
-        if (last_action != TOK_COMMENT && last_action != TOK_SPACE) {
-          tc_add(&ps->main_chunk, (Token){last_action, tok_start, cp_byte, tok_line, tok_col});
+        if (last_action) {
+          tc_add(&chunk, (Token){last_action, tok_start, cp_byte, tok_line, tok_col});
         }
       }
       tok_start = cp_byte;
@@ -431,28 +232,23 @@ static bool _lex_with_dfa(ParseState* ps) {
       last_action = 0;
       state = 0;
       if (cp == -2) break;
-      r = cur_lex(0, cp);
+      r = cfg.lex_fn(0, cp);
       if (r.action == LEX_ACTION_NOMATCH) {
-        tok_start = ctx.it.byte_off;
-        tok_line = ctx.it.line;
-        tok_col = ctx.it.col;
-        ctx.pos = ctx.it.byte_off;
+        tok_start = ctx->it.byte_off;
+        tok_line = ctx->it.line;
+        tok_col = ctx->it.col;
+        ctx->pos = ctx->it.byte_off;
         continue;
       }
     }
     last_action = (int32_t)r.action;
     state = r.state;
-    ctx.pos = ctx.it.byte_off;
+    ctx->pos = ctx->it.byte_off;
     if (cp == -2) break;
   }
-
-  if (last_action > 0 && last_action != TOK_COMMENT && last_action != TOK_SPACE) {
-    tc_add(&ps->main_chunk, (Token){last_action, tok_start, ctx.pos, tok_line, tok_col});
-  }
-
-  ustr_del(ustr);
-  return true;
+  return chunk;
 }
+
 static Token* _peek(ParseState* ps) {
   if (ps->tpos < tc_size(ps->main_chunk)) {
     return &ps->main_chunk[ps->tpos];
@@ -502,14 +298,14 @@ static void _parse_unit_followups(ParseState* ps, VpaUnit* unit, VpaRule* rule) 
     }
     if (ft->id == TOK_TOK_ID) {
       _next(ps);
-      _set_str(&unit->name, _tok_strdup_skip(ps, ft, 1));
+      parse_set_str(&unit->name, _tok_strdup_skip(ps, ft, 1));
     } else if (ft->id == TOK_HOOK_BEGIN || ft->id == TOK_HOOK_END || ft->id == TOK_HOOK_FAIL ||
                ft->id == TOK_HOOK_UNPARSE) {
       _next(ps);
       unit->hook = ft->id;
     } else if (ft->id == TOK_USER_HOOK_ID) {
       _next(ps);
-      _set_str(&unit->user_hook, _tok_strdup(ps, ft));
+      parse_set_str(&unit->user_hook, _tok_strdup(ps, ft));
     } else if (ft->id == TOK_SCOPE_BEGIN) {
       _next(ps);
       unit->kind = VPA_SCOPE;
@@ -598,7 +394,7 @@ static bool _parse_vpa_macro_ref(ParseState* ps, VpaRule* rule) {
   }
   _next(ps);
   char* base = _tok_strdup_skip(ps, t, 1);
-  VpaUnit unit = {.kind = VPA_REF, .name = _sfmt("*%s", base)};
+  VpaUnit unit = {.kind = VPA_REF, .name = parse_sfmt("*%s", base)};
   free(base);
   _add_vpa_unit(rule, unit);
   return true;
@@ -832,12 +628,12 @@ static bool _parse_vpa_section(ParseState* ps) {
     }
     if (_parse_keyword_decl(ps) || _parse_ignore_decl(ps) || _parse_state_decl(ps) || _parse_effect_decl(ps) ||
         _parse_macro_rule(ps) || _parse_vpa_rule(ps)) {
-      if (_has_error(ps)) {
+      if (parse_has_error(ps)) {
         return false;
       }
       continue;
     }
-    if (_has_error(ps)) {
+    if (parse_has_error(ps)) {
       return false;
     }
     _error_at(ps, t, "unexpected token in [[vpa]] section");
@@ -1026,7 +822,7 @@ static void _expand_kw_in_peg_unit(PegUnit* unit, ParseState* ps) {
       memcpy(lit, ps->src + kw->lit_off, (size_t)len);
       lit[len] = '\0';
       if (strcmp(unit->name, lit) == 0) {
-        _set_str(&unit->name, _sfmt("%s.%s", kw->group, lit));
+        parse_set_str(&unit->name, parse_sfmt("%s.%s", kw->group, lit));
         break;
       }
     }
@@ -1039,7 +835,7 @@ static void _expand_kw_in_peg_unit(PegUnit* unit, ParseState* ps) {
   }
 }
 
-static void _expand_keywords(ParseState* ps) {
+void expand_keywords(ParseState* ps) {
   for (int32_t k = 0; k < (int32_t)darray_size(ps->keywords); k++) {
     KeywordEntry* kw = &ps->keywords[k];
     int32_t len = kw->lit_len;
@@ -1047,7 +843,7 @@ static void _expand_keywords(ParseState* ps) {
     memcpy(lit, ps->src + kw->lit_off, (size_t)len);
     lit[len] = '\0';
 
-    char* tok_name = _sfmt("%s.%s", kw->group, lit);
+    char* tok_name = parse_sfmt("%s.%s", kw->group, lit);
     ReAstNode* ast = re_ast_build_literal(ps->src, kw->lit_off, kw->lit_len);
 
     bool added = false;
@@ -1115,7 +911,7 @@ static VpaUnit _clone_vpa_unit(VpaUnit* src) {
   return dst;
 }
 
-static void _inline_macros(ParseState* ps) {
+void inline_macros(ParseState* ps) {
   for (int32_t r = 0; r < (int32_t)darray_size(ps->vpa_rules); r++) {
     VpaRule* rule = &ps->vpa_rules[r];
     if (rule->is_macro) {
@@ -1191,13 +987,13 @@ static void _auto_tag_unit(ParseState* ps, PegRule* rule, PegUnit* unit) {
   }
 }
 
-static void _auto_tag_branches(ParseState* ps) {
+void auto_tag_branches(ParseState* ps) {
   for (int32_t r = 0; r < (int32_t)darray_size(ps->peg_rules); r++) {
     _auto_tag_unit(ps, &ps->peg_rules[r], &ps->peg_rules[r].seq);
   }
 }
 
-static void _check_cross_bracket_tags(ParseState* ps) {
+void check_cross_bracket_tags(ParseState* ps) {
   for (int32_t r = 0; r < (int32_t)darray_size(ps->peg_rules); r++) {
     PegRule* rule = &ps->peg_rules[r];
     char** tags = darray_new(sizeof(char*), 0);
@@ -1224,313 +1020,6 @@ static void _check_cross_bracket_tags(ParseState* ps) {
   next_rule:
     darray_del(tags);
   }
-}
-
-// --- Post-processing: allocate PEG rule IDs per scope ---
-
-static bool _is_vpa_scope_rule(VpaRule* rule) {
-  if (rule->is_macro) {
-    return false;
-  }
-  if (rule->is_scope) {
-    return true;
-  }
-  for (int32_t i = 0; i < (int32_t)darray_size(rule->units); i++) {
-    if (rule->units[i].kind == VPA_SCOPE) {
-      return true;
-    }
-  }
-  return false;
-}
-
-static VpaUnit* _get_scope_body(VpaRule* rule) {
-  if (rule->is_scope) {
-    return rule->units;
-  }
-  for (int32_t i = 0; i < (int32_t)darray_size(rule->units); i++) {
-    if (rule->units[i].kind == VPA_SCOPE) {
-      return rule->units[i].children;
-    }
-  }
-  return NULL;
-}
-
-static void _assign_peg_scopes(ParseState* ps) {
-  for (int32_t p = 0; p < (int32_t)darray_size(ps->peg_rules); p++) {
-    PegRule* peg = &ps->peg_rules[p];
-    for (int32_t v = 0; v < (int32_t)darray_size(ps->vpa_rules); v++) {
-      if (_is_vpa_scope_rule(&ps->vpa_rules[v]) && strcmp(ps->vpa_rules[v].name, peg->name) == 0) {
-        _set_str(&peg->scope, strdup(ps->vpa_rules[v].name));
-        break;
-      }
-    }
-  }
-}
-
-// --- Token set validation: VPA emit set vs PEG used set per scope ---
-
-static bool _str_set_has(char** set, const char* name) {
-  for (int32_t i = 0; i < (int32_t)darray_size(set); i++) {
-    if (strcmp(set[i], name) == 0) {
-      return true;
-    }
-  }
-  return false;
-}
-
-static void _str_set_add(char*** set, const char* name) {
-  if (!_str_set_has(*set, name)) {
-    char* dup = strdup(name);
-    darray_push(*set, dup);
-  }
-}
-
-static void _str_set_free(char** set) {
-  for (int32_t i = 0; i < (int32_t)darray_size(set); i++) {
-    free(set[i]);
-  }
-  darray_del(set);
-}
-
-static VpaRule* _find_vpa_rule(ParseState* ps, const char* name) {
-  for (int32_t i = 0; i < (int32_t)darray_size(ps->vpa_rules); i++) {
-    if (!ps->vpa_rules[i].is_macro && strcmp(ps->vpa_rules[i].name, name) == 0) {
-      return &ps->vpa_rules[i];
-    }
-  }
-  return NULL;
-}
-
-static void _collect_emit_set(ParseState* ps, VpaUnit* units, char*** set, char*** visited) {
-  for (int32_t i = 0; i < (int32_t)darray_size(units); i++) {
-    VpaUnit* u = &units[i];
-
-    if (u->kind == VPA_REGEXP || u->kind == VPA_STATE) {
-      if (u->name && u->name[0]) {
-        _str_set_add(set, u->name);
-      }
-    } else if (u->kind == VPA_REF) {
-      VpaRule* ref = u->name ? _find_vpa_rule(ps, u->name) : NULL;
-      if (ref) {
-        // Bare ref to another rule. If it's a scope, it's a scope transition — not a token.
-        // If it's a plain rule, recurse into its units.
-        if (!_is_vpa_scope_rule(ref)) {
-          if (!_str_set_has(*visited, u->name)) {
-            char* dup = strdup(u->name);
-            darray_push(*visited, dup);
-            _collect_emit_set(ps, ref->units, set, visited);
-            // If the ref rule has match units without names, they emit the rule name as token.
-            for (int32_t j = 0; j < (int32_t)darray_size(ref->units); j++) {
-              VpaUnit* ru = &ref->units[j];
-              if ((ru->kind == VPA_REGEXP || ru->kind == VPA_STATE) && (!ru->name || !ru->name[0])) {
-                _str_set_add(set, ref->name);
-              }
-            }
-          }
-        }
-      } else if (u->name && u->name[0]) {
-        // Name doesn't match any rule — it was overwritten by @tok_id followup
-        _str_set_add(set, u->name);
-      }
-    }
-    // VPA_SCOPE children are sub-scopes, not tokens in this scope
-  }
-}
-
-static PegRule* _find_peg_rule(ParseState* ps, const char* name) {
-  for (int32_t i = 0; i < (int32_t)darray_size(ps->peg_rules); i++) {
-    if (strcmp(ps->peg_rules[i].name, name) == 0) {
-      return &ps->peg_rules[i];
-    }
-  }
-  return NULL;
-}
-
-static void _collect_peg_used_set(PegUnit* unit, char*** set, ParseState* ps, char*** visited_rules) {
-  if (unit->kind == PEG_TOK && unit->name) {
-    _str_set_add(set, unit->name);
-  }
-  if (unit->kind == PEG_ID && unit->name) {
-    if (!_str_set_has(*visited_rules, unit->name)) {
-      VpaRule* vr = _find_vpa_rule(ps, unit->name);
-      if (!vr || !_is_vpa_scope_rule(vr)) {
-        char* dup = strdup(unit->name);
-        darray_push(*visited_rules, dup);
-        PegRule* ref = _find_peg_rule(ps, unit->name);
-        if (ref) {
-          _collect_peg_used_set(&ref->seq, set, ps, visited_rules);
-        }
-      }
-    }
-  }
-  for (int32_t i = 0; i < (int32_t)darray_size(unit->children); i++) {
-    _collect_peg_used_set(&unit->children[i], set, ps, visited_rules);
-  }
-  if (unit->interlace) {
-    _collect_peg_used_set(unit->interlace, set, ps, visited_rules);
-  }
-}
-
-static bool _is_ignored(ParseState* ps, const char* name) {
-  for (int32_t i = 0; i < (int32_t)darray_size(ps->ignores.names); i++) {
-    if (strcmp(ps->ignores.names[i], name) == 0) {
-      return true;
-    }
-  }
-  return false;
-}
-
-static bool _validate_token_sets(ParseState* ps) {
-  for (int32_t v = 0; v < (int32_t)darray_size(ps->vpa_rules); v++) {
-    VpaRule* vpa_rule = &ps->vpa_rules[v];
-    if (!_is_vpa_scope_rule(vpa_rule)) {
-      continue;
-    }
-    VpaUnit* body = _get_scope_body(vpa_rule);
-    if (!body) {
-      continue;
-    }
-
-    // Find PEG rules for this scope
-    bool has_peg = false;
-    for (int32_t p = 0; p < (int32_t)darray_size(ps->peg_rules); p++) {
-      if (strcmp(ps->peg_rules[p].name, vpa_rule->name) == 0) {
-        has_peg = true;
-        break;
-      }
-    }
-    if (!has_peg) {
-      continue;
-    }
-
-    // Collect VPA emit set for this scope (excluding ignored tokens)
-    char** emit_set = darray_new(sizeof(char*), 0);
-    char** visited = darray_new(sizeof(char*), 0);
-    _collect_emit_set(ps, body, &emit_set, &visited);
-    _str_set_free(visited);
-
-    // Remove ignored tokens from emit set
-    char** filtered_emit = darray_new(sizeof(char*), 0);
-    for (int32_t i = 0; i < (int32_t)darray_size(emit_set); i++) {
-      if (!_is_ignored(ps, emit_set[i])) {
-        char* dup = strdup(emit_set[i]);
-        darray_push(filtered_emit, dup);
-      }
-    }
-    _str_set_free(emit_set);
-
-    // Collect PEG used set: from the entry rule, transitively follow PEG_ID refs (but not into sub-scopes)
-    char** used_set = darray_new(sizeof(char*), 0);
-    PegRule* entry = _find_peg_rule(ps, vpa_rule->name);
-    if (entry) {
-      char** visited_rules = darray_new(sizeof(char*), 0);
-      _collect_peg_used_set(&entry->seq, &used_set, ps, &visited_rules);
-      _str_set_free(visited_rules);
-    }
-
-    // Check: every PEG token must exist in VPA emit set
-    for (int32_t i = 0; i < (int32_t)darray_size(used_set); i++) {
-      if (!_str_set_has(filtered_emit, used_set[i])) {
-        _error(ps, "scope '%s': peg uses token @%s not emitted by vpa", vpa_rule->name, used_set[i]);
-        _str_set_free(filtered_emit);
-        _str_set_free(used_set);
-        return false;
-      }
-    }
-
-    // Check: every VPA token must be used in PEG
-    for (int32_t i = 0; i < (int32_t)darray_size(filtered_emit); i++) {
-      if (!_str_set_has(used_set, filtered_emit[i])) {
-        _error(ps, "scope '%s': vpa emits token @%s not used by peg", vpa_rule->name, filtered_emit[i]);
-        _str_set_free(filtered_emit);
-        _str_set_free(used_set);
-        return false;
-      }
-    }
-
-    _str_set_free(filtered_emit);
-    _str_set_free(used_set);
-  }
-  return true;
-}
-
-// --- Validations ---
-
-static bool _validate(ParseState* ps) {
-  bool has_vpa_main = false;
-  for (int32_t i = 0; i < (int32_t)darray_size(ps->vpa_rules); i++) {
-    if (!ps->vpa_rules[i].is_macro && strcmp(ps->vpa_rules[i].name, "main") == 0) {
-      has_vpa_main = true;
-      break;
-    }
-  }
-  if (!has_vpa_main) {
-    _error(ps, "'main' rule must exist in [[vpa]]");
-    return false;
-  }
-
-  for (int32_t i = 0; i < (int32_t)darray_size(ps->vpa_rules); i++) {
-    VpaRule* rule = &ps->vpa_rules[i];
-    for (int32_t j = 0; j < (int32_t)darray_size(rule->units); j++) {
-      VpaUnit* u = &rule->units[j];
-      if (u->kind != VPA_STATE || !u->state_name || !u->state_name[0]) {
-        continue;
-      }
-      bool found = false;
-      for (int32_t s = 0; s < (int32_t)darray_size(ps->states); s++) {
-        if (strcmp(ps->states[s].name, u->state_name) == 0) {
-          found = true;
-          break;
-        }
-      }
-      if (!found) {
-        _error(ps, "state '$%s' used in rule '%s' is not declared", u->state_name, rule->name);
-        return false;
-      }
-    }
-  }
-
-  for (int32_t i = 0; i < (int32_t)darray_size(ps->vpa_rules); i++) {
-    VpaRule* rule = &ps->vpa_rules[i];
-    if (!rule->is_scope || rule->is_macro || strcmp(rule->name, "main") == 0) {
-      continue;
-    }
-    bool has_begin = false;
-    bool has_end = false;
-    for (int32_t j = 0; j < (int32_t)darray_size(rule->units); j++) {
-      VpaUnit* u = &rule->units[j];
-      if (u->hook == TOK_HOOK_BEGIN) {
-        has_begin = true;
-      }
-      if (u->hook == TOK_HOOK_END) {
-        has_end = true;
-      }
-      if (u->user_hook && u->user_hook[0]) {
-        for (int32_t e = 0; e < (int32_t)darray_size(ps->effects); e++) {
-          if (strcmp(ps->effects[e].hook_name, u->user_hook) == 0) {
-            for (int32_t ef = 0; ef < (int32_t)darray_size(ps->effects[e].effects); ef++) {
-              if (ps->effects[e].effects[ef] == TOK_HOOK_BEGIN) {
-                has_begin = true;
-              }
-              if (ps->effects[e].effects[ef] == TOK_HOOK_END) {
-                has_end = true;
-              }
-            }
-          }
-        }
-      }
-    }
-    if (has_begin && !has_end) {
-      _error(ps, "scope '%s' missing .end", rule->name);
-      return false;
-    }
-  }
-
-  if (!_validate_token_sets(ps)) {
-    return false;
-  }
-
-  return true;
 }
 
 // --- Free helpers ---
@@ -1605,62 +1094,46 @@ static void _free_state(ParseState* ps) {
   darray_del(ps->ignores.names);
 }
 
+ParseState* parse_state_new(void) {
+  ParseState* ps = calloc(1, sizeof(ParseState));
+  return ps;
+}
+
+void parse_state_del(ParseState* ps) {
+  if (!ps) return;
+  _free_state(ps);
+  free(ps);
+}
+
+const char* parse_get_error(ParseState* ps) {
+  if (!ps) return NULL;
+  return ps->error[0] ? ps->error : NULL;
+}
+
 // --- Public API ---
 
-void parse_nest(const char* src, HeaderWriter* header_writer, IrWriter* ir_writer) {
-  ParseState ps = {0};
-  ps.src = src;
-  ps.src_len = (int32_t)strlen(src);
+bool parse_nest(ParseState* ps, const char* src) {
+  ps->src = src;
+  ps->src_len = (int32_t)strlen(src);
 
-  if (!_lex_with_dfa(&ps)) {
-    goto fail;
+  if (!_lex_scope(ps)) {
+    return false;
   }
 
-  ps.tpos = 0;
-  if (!_parse_vpa_section(&ps)) {
-    goto fail;
+  ps->tpos = 0;
+  if (!_parse_vpa_section(ps)) {
+    return false;
   }
-  if (!_parse_peg_section(&ps)) {
-    goto fail;
+  if (!_parse_peg_section(ps)) {
+    return false;
   }
-  if (!_at_end(&ps)) {
-    _error_at(&ps, _peek(&ps), "unexpected token after end of input");
-    goto fail;
-  }
-
-  _inline_macros(&ps);
-  _expand_keywords(&ps);
-  _auto_tag_branches(&ps);
-  _check_cross_bracket_tags(&ps);
-  _assign_peg_scopes(&ps);
-  if (!_validate(&ps)) {
-    goto fail;
-  }
-  if (_has_error(&ps)) {
-    goto fail;
+  if (!_at_end(ps)) {
+    _error_at(ps, _peek(ps), "unexpected token after end of input");
+    return false;
   }
 
-  peg_gen(
-      &(PegGenInput){
-          .rules = ps.peg_rules,
-      },
-      header_writer, ir_writer);
+  inline_macros(ps);
+  expand_keywords(ps);
 
-  vpa_gen(
-      &(VpaGenInput){
-          .rules = ps.vpa_rules,
-          .keywords = ps.keywords,
-          .states = ps.states,
-          .effects = ps.effects,
-          .peg_rules = ps.peg_rules,
-          .src = ps.src,
-      },
-      header_writer, ir_writer);
-
-  _free_state(&ps);
-  return;
-
-fail:
-  fprintf(stderr, "parse error: %s\n", ps.error);
-  _free_state(&ps);
+  return true;
 }

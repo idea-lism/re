@@ -90,21 +90,67 @@ enum {
 };
 
 // Scope IDs
-enum {
+typedef enum {
   SCOPE_MAIN = 0,
   SCOPE_VPA,
   SCOPE_PEG,
   SCOPE_RE,
+  SCOPE_RE_STR,
+  SCOPE_RE_REF,
   SCOPE_CHARCLASS,
-  SCOPE_CHARS,
-  SCOPE_DQUOTE_STR,
-  SCOPE_SQUOTE_STR,
-  SCOPE_IGNORES,
+  SCOPE_KEYWORD_STR,
   SCOPE_COUNT
-};
+} ScopeId;
 
 #include "header_writer.h"
 #include "irwriter.h"
 #include "re_ast.h"
+#include "token_chunk.h"
+#include "vpa.h"
+#include "peg.h"
 
-void parse_nest(const char* src, HeaderWriter* header_writer, IrWriter* ir_writer);
+// --- Parser state ---
+
+typedef struct {
+  const char* src;
+  int32_t src_len;
+  char* ustr;
+
+  TokenChunk main_chunk;
+  int32_t tpos;
+
+  ReAstNode** re_asts; // darray
+  void* str_spans;     // darray (StrSpan*)
+
+  VpaRule* vpa_rules;     // darray
+  KeywordEntry* keywords; // darray
+  IgnoreSet ignores;
+  StateDecl* states;   // darray
+  EffectDecl* effects; // darray
+  PegRule* peg_rules;  // darray
+
+  char error[512];
+} ParseState;
+
+// --- Public API ---
+
+bool parse_nest(ParseState* ps, const char* src);
+
+ParseState* parse_state_new(void);
+void parse_state_del(ParseState* ps);
+const char* parse_get_error(ParseState* ps);
+
+// --- Helper functions ---
+
+void parse_error(ParseState* ps, const char* fmt, ...);
+bool parse_has_error(ParseState* ps);
+char* parse_sfmt(const char* fmt, ...);
+void parse_set_str(char** dst, char* s);
+
+// --- Post-processing functions ---
+
+void expand_keywords(ParseState* ps);
+void inline_macros(ParseState* ps);
+void auto_tag_branches(ParseState* ps);
+void check_cross_bracket_tags(ParseState* ps);
+void assign_peg_scopes(ParseState* ps);
