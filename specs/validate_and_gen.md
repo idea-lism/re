@@ -1,6 +1,8 @@
 Takes parser AST, validate and call codegen.
 
-Create "src/validate_and_gen.c"
+Create "src/validate_and_gen.c".
+
+- `bool validate_and_gen(ParseState* s, HeaderWriter* header_writer, IrWriter* ir_writer)`
 
 ### Nest file definition validation
 

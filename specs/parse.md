@@ -36,7 +36,8 @@ The overall handling with this syntax:
 
 Resulting interface:
 
-- `parse_nest(const char* src, HeaderWriter* header_writer, IrWriter* ir_writer)`
+- `parse_state_new()`, `parse_state_del()`
+- `bool parse_nest(const char* src)`
 
 For reference, file `specs/bootstrap.nest` contains the full syntax definition in its own syntax.
 
