@@ -13,7 +13,7 @@
     printf("ok\n");                                                                                                    \
   } while (0)
 
-#define TARGET "arm64-apple-macosx14.0.0"
+
 
 // Emit a BB header for a pre-reserved label (use instead of irwriter_bb for forward-declared labels)
 
@@ -23,7 +23,7 @@ static char* _capture(void (*fn)(IrWriter*)) {
   size_t sz = 0;
   FILE* f = compat_open_memstream(&buf, &sz);
   assert(f);
-  IrWriter* w = irwriter_new(f, TARGET);
+  IrWriter* w = irwriter_new(f, NULL);
   fn(w);
   irwriter_del(w);
   compat_close_memstream(f, &buf, &sz);
@@ -37,7 +37,7 @@ static void _emit_module_prelude(IrWriter* w) { irwriter_start(w, "test.ll", "."
 TEST(test_module_prelude) {
   char* out = _capture(_emit_module_prelude);
   assert(strstr(out, "source_filename = \"test.ll\""));
-  assert(strstr(out, "target triple = \"arm64-apple-macosx14.0.0\""));
+  assert(!strstr(out, "target triple"));
   free(out);
 }
 
@@ -327,7 +327,7 @@ TEST(test_dfa_function) {
 TEST(test_lifecycle) {
   FILE* f = compat_devnull_w();
   assert(f);
-  IrWriter* w = irwriter_new(f, TARGET);
+  IrWriter* w = irwriter_new(f, NULL);
   assert(w);
 
   irwriter_start(w, "test.ll", ".");
@@ -358,7 +358,7 @@ TEST(test_clang_compile) {
   snprintf(obj_path, sizeof(obj_path), "%s/test_irwriter.o", BUILD_DIR);
   FILE* f = fopen(ll_path, "w");
   assert(f);
-  IrWriter* w = irwriter_new(f, TARGET);
+  IrWriter* w = irwriter_new(f, NULL);
 
   irwriter_start(w, "dfa.rules", ".");
 

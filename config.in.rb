@@ -54,7 +54,7 @@ rule gen_nest_lex
   description = GEN $out
 
 rule ll_cc
-  command = #{llvm_cc} -Wno-override-module -c $in -o $out
+  command = #{llvm_cc} -c $in -o $out
   description = LLCC $in
 
 build #{bd}/nest_lex.ll: gen_nest_lex #{bd}/parse_gen

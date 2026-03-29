@@ -460,12 +460,12 @@ static void _usage(void) {
                   "  -o <file>     output LLVM IR file\n"
                   "  -f <name>     function name (default: \"lex\")\n"
                   "  -m <mode>     mode flags: i=case-insensitive, b=binary\n"
-                  "  -t <triple>   target triple (default: probe clang)\n"
+                  "  -t <triple>   target triple (default: omit in IR; if -t given without value: probe clang)\n"
                   "\n"
                   "nest c <input.nest> -o <output.ll> [-t <triple>]\n"
                   "  input.nest    .nest syntax file\n"
                   "  -o <file>     output LLVM IR file\n"
-                  "  -t <triple>   target triple (default: probe clang)\n");
+                  "  -t <triple>   target triple (default: omit in IR; if -t given without value: probe clang)\n");
   exit(1);
 }
 
@@ -494,10 +494,12 @@ static int32_t _cmd_lex(int32_t argc, char** argv) {
       }
       mode = argv[i++];
     } else if (strcmp(argv[i], "-t") == 0) {
-      if (++i >= argc) {
-        _usage();
+      i++;
+      if (i < argc && argv[i][0] != '-') {
+        triple = argv[i++];
+      } else {
+        triple = _detect_triple();
       }
-      triple = argv[i++];
     } else if (argv[i][0] == '-') {
       _usage();
     } else if (!input) {
@@ -510,10 +512,6 @@ static int32_t _cmd_lex(int32_t argc, char** argv) {
   if (!input || !output) {
     _usage();
   }
-  if (!triple) {
-    triple = _detect_triple();
-  }
-
   FILE* fin = fopen(input, "r");
   if (!fin) {
     perror(input);
@@ -590,10 +588,12 @@ static int32_t _cmd_compile(int32_t argc, char** argv) {
       }
       output = argv[i++];
     } else if (strcmp(argv[i], "-t") == 0) {
-      if (++i >= argc) {
-        _usage();
+      i++;
+      if (i < argc && argv[i][0] != '-') {
+        triple = argv[i++];
+      } else {
+        triple = _detect_triple();
       }
-      triple = argv[i++];
     } else if (argv[i][0] == '-') {
       _usage();
     } else if (!input) {
@@ -606,10 +606,6 @@ static int32_t _cmd_compile(int32_t argc, char** argv) {
   if (!input || !output) {
     _usage();
   }
-  if (!triple) {
-    triple = _detect_triple();
-  }
-
   char* src = _read_file(input);
   if (!src) {
     return 1;

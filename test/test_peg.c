@@ -39,7 +39,7 @@ TEST(test_empty_input) {
   FILE* hf = fopen(BUILD_DIR "/test_peg_empty.h", "w");
   FILE* irf = fopen(BUILD_DIR "/test_peg_empty.ll", "w");
   HeaderWriter* hw = hw_new(hf);
-  IrWriter* w = irwriter_new(irf, "x86_64-unknown-linux-gnu");
+  IrWriter* w = irwriter_new(irf, NULL);
 
   irwriter_start(w, "test.c", ".");
   peg_gen(&input, hw, w);
@@ -74,7 +74,7 @@ TEST(test_simple_rule_naive) {
   FILE* hf = fopen(BUILD_DIR "/test_peg_naive.h", "w");
   FILE* irf = fopen(BUILD_DIR "/test_peg_naive.ll", "w");
   HeaderWriter* hw = hw_new(hf);
-  IrWriter* w = irwriter_new(irf, "x86_64-unknown-linux-gnu");
+  IrWriter* w = irwriter_new(irf, NULL);
 
   irwriter_start(w, "test.c", ".");
   peg_gen(&input, hw, w);
@@ -142,7 +142,7 @@ TEST(test_row_shared_mode) {
   FILE* hf = fopen(BUILD_DIR "/test_peg_shared.h", "w");
   FILE* irf = fopen(BUILD_DIR "/test_peg_shared.ll", "w");
   HeaderWriter* hw = hw_new(hf);
-  IrWriter* w = irwriter_new(irf, "x86_64-unknown-linux-gnu");
+  IrWriter* w = irwriter_new(irf, NULL);
 
   irwriter_start(w, "test.c", ".");
   peg_gen(&input, hw, w);
@@ -214,7 +214,7 @@ TEST(test_branch_rule) {
   FILE* hf = compat_open_memstream(&hdr_buf, &hdr_sz);
   FILE* irf = fopen(BUILD_DIR "/test_peg_branch.ll", "w");
   HeaderWriter* hw = hw_new(hf);
-  IrWriter* w = irwriter_new(irf, "x86_64-unknown-linux-gnu");
+  IrWriter* w = irwriter_new(irf, NULL);
 
   irwriter_start(w, "test.c", ".");
   peg_gen(&input, hw, w);
@@ -291,7 +291,7 @@ TEST(test_per_scope_col) {
   FILE* hf = compat_open_memstream(&hdr_buf, &hdr_sz);
   FILE* irf = fopen(BUILD_DIR "/test_peg_scope.ll", "w");
   HeaderWriter* hw = hw_new(hf);
-  IrWriter* w = irwriter_new(irf, "x86_64-unknown-linux-gnu");
+  IrWriter* w = irwriter_new(irf, NULL);
 
   irwriter_start(w, "test.c", ".");
   peg_gen(&input, hw, w);
@@ -363,7 +363,7 @@ TEST(test_row_shared_per_scope_compact) {
   FILE* hf = compat_open_memstream(&hdr_buf, &hdr_sz);
   FILE* irf = fopen(BUILD_DIR "/test_peg_shared_scope_compact.ll", "w");
   HeaderWriter* hw = hw_new(hf);
-  IrWriter* w = irwriter_new(irf, "x86_64-unknown-linux-gnu");
+  IrWriter* w = irwriter_new(irf, NULL);
 
   irwriter_start(w, "test.c", ".");
   peg_gen(&input, hw, w);
@@ -428,7 +428,7 @@ TEST(test_scope_refs_not_expanded_in_sets) {
   FILE* hf = compat_open_memstream(&hdr_buf, &hdr_sz);
   FILE* irf = fopen(BUILD_DIR "/test_peg_scope_ref_sets.ll", "w");
   HeaderWriter* hw = hw_new(hf);
-  IrWriter* w = irwriter_new(irf, "x86_64-unknown-linux-gnu");
+  IrWriter* w = irwriter_new(irf, NULL);
 
   irwriter_start(w, "test.c", ".");
   peg_gen(&input, hw, w);

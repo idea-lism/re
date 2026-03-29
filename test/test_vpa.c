@@ -24,7 +24,7 @@
     printf("ok\n");                                                                                                    \
   } while (0)
 
-#define TARGET "arm64-apple-macosx14.0.0"
+
 
 // --- Helpers ---
 
@@ -40,7 +40,7 @@ static void _gen(VpaGenInput* input, char** hdr_out, size_t* hdr_sz, char** ir_o
   assert(irf);
 
   HeaderWriter* hw = hw_new(hf);
-  IrWriter* w = irwriter_new(irf, TARGET);
+  IrWriter* w = irwriter_new(irf, NULL);
   irwriter_start(w, "test_vpa.nest", ".");
 
   vpa_gen(input, hw, w);

@@ -19,7 +19,7 @@
 
 void parse_nest(const char* src, HeaderWriter* header_writer, IrWriter* ir_writer);
 
-#define TARGET "arm64-apple-macosx14.0.0"
+
 
 // Minimal valid test source: one scope with tokens that match PEG usage.
 // main scope emits @id and @assign (ignoring @comment and @space).
@@ -83,7 +83,7 @@ static void _gen_output(const char* src, char** hdr_out, size_t* hdr_sz_out, cha
   assert(ir_f);
 
   HeaderWriter* hw = hw_new(hdr_f);
-  IrWriter* w = irwriter_new(ir_f, TARGET);
+  IrWriter* w = irwriter_new(ir_f, NULL);
   irwriter_start(w, "test.nest", ".");
 
   parse_nest(src, hw, w);

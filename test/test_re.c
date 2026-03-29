@@ -14,14 +14,14 @@
     printf("ok\n");                                                                                                    \
   } while (0)
 
-#define TARGET "arm64-apple-macosx14.0.0"
+
 
 static char* _gen_ir(void (*fn)(Aut*, Re*, IrWriter*)) {
   char* buf = NULL;
   size_t sz = 0;
   FILE* f = compat_open_memstream(&buf, &sz);
   assert(f);
-  IrWriter* w = irwriter_new(f, TARGET);
+  IrWriter* w = irwriter_new(f, NULL);
   irwriter_start(w, "test.rules", ".");
 
   Aut* a = aut_new("match", "test.rules");
@@ -359,7 +359,7 @@ static void _write_and_compile(void (*fn)(Aut*, Re*, IrWriter*), const char* tes
 
   FILE* f = fopen(ll_path, "w");
   assert(f);
-  IrWriter* w = irwriter_new(f, TARGET);
+  IrWriter* w = irwriter_new(f, NULL);
   irwriter_start(w, "test.rules", ".");
 
   Aut* a = aut_new("match", "test.rules");

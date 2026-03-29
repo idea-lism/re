@@ -1,5 +1,7 @@
 #include "compat.h"
 
+#include <string.h>
+
 #ifdef _WIN32
 
 #include <stdio.h>

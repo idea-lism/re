@@ -13,14 +13,14 @@
     printf("ok\n");                                                                                                    \
   } while (0)
 
-#define TARGET "arm64-apple-macosx14.0.0"
+
 
 static char* _gen_ir(void (*fn)(Aut*, IrWriter*)) {
   char* buf = NULL;
   size_t sz = 0;
   FILE* f = compat_open_memstream(&buf, &sz);
   assert(f);
-  IrWriter* w = irwriter_new(f, TARGET);
+  IrWriter* w = irwriter_new(f, NULL);
   irwriter_start(w, "test.rules", ".");
 
   Aut* a = aut_new("match", "test.rules");
@@ -292,7 +292,7 @@ TEST(test_optimize_preserves_action) {
     size_t sz = 0;
     FILE* f = compat_open_memstream(&buf, &sz);
     assert(f);
-    IrWriter* w = irwriter_new(f, TARGET);
+    IrWriter* w = irwriter_new(f, NULL);
     irwriter_start(w, "test.rules", ".");
     Aut* a = aut_new("match", "test.rules");
     aut_transition(a, (TransitionDef){0, 1, 'a', 'a'}, (DebugInfo){1, 1});
@@ -318,7 +318,7 @@ TEST(test_optimize_preserves_action) {
     size_t sz = 0;
     FILE* f = compat_open_memstream(&buf, &sz);
     assert(f);
-    IrWriter* w = irwriter_new(f, TARGET);
+    IrWriter* w = irwriter_new(f, NULL);
     irwriter_start(w, "test.rules", ".");
     Aut* a = aut_new("match", "test.rules");
     aut_transition(a, (TransitionDef){0, 1, 'a', 'a'}, (DebugInfo){1, 1});
@@ -360,7 +360,7 @@ static void _write_and_compile(void (*fn)(Aut*, IrWriter*), const char* test_nam
     fprintf(stderr, "fopen failed: %s\n", ll_path);
   }
   assert(f);
-  IrWriter* w = irwriter_new(f, TARGET);
+  IrWriter* w = irwriter_new(f, NULL);
   irwriter_start(w, "test.rules", ".");
 
   Aut* a = aut_new("match", "test.rules");
@@ -430,7 +430,7 @@ TEST(test_empty_aut) {
   size_t sz = 0;
   FILE* f = compat_open_memstream(&buf, &sz);
   assert(f);
-  IrWriter* w = irwriter_new(f, TARGET);
+  IrWriter* w = irwriter_new(f, NULL);
   irwriter_start(w, "test.rules", ".");
 
   Aut* a = aut_new("empty", "test.rules");

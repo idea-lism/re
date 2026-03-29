@@ -84,7 +84,7 @@ TEST(test_no_extra_defines) {
 
 // --- IR structure tests ---
 
-TEST(test_has_target_triple) { assert(strstr(ll_buf, "target triple")); }
+TEST(test_omits_target_triple) { assert(!strstr(ll_buf, "target triple")); }
 
 TEST(test_has_source_filename) { assert(strstr(ll_buf, "source_filename")); }
 
@@ -92,7 +92,7 @@ TEST(test_has_source_filename) { assert(strstr(ll_buf, "source_filename")); }
 
 TEST(test_compiles) {
   char cmd[512];
-  snprintf(cmd, sizeof(cmd), "%s -Wno-override-module -c %s -o %s 2>&1", compat_llvm_cc(), LL_PATH, OBJ_PATH);
+  snprintf(cmd, sizeof(cmd), "%s -c %s -o %s 2>&1", compat_llvm_cc(), LL_PATH, OBJ_PATH);
   FILE* p = compat_popen(cmd, "r");
   assert(p);
   char output[4096] = {0};
@@ -118,7 +118,7 @@ int main(void) {
   RUN(test_has_lex_squote_str);
   RUN(test_has_lex_peg);
   RUN(test_no_extra_defines);
-  RUN(test_has_target_triple);
+  RUN(test_omits_target_triple);
   RUN(test_has_source_filename);
   RUN(test_compiles);
 

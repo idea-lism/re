@@ -571,33 +571,11 @@ static Lex* _build_peg_scope(void) {
   return l;
 }
 
-static const char* _detect_triple(void) {
-  FILE* p = popen("clang --print-target-triple 2>/dev/null", "r");
-  if (!p) {
-    fprintf(stderr, "parse_gen: warning: cannot run clang, defaulting to x86_64-unknown-linux-gnu\n");
-    return "x86_64-unknown-linux-gnu";
-  }
-  static char buf[128];
-  if (!fgets(buf, sizeof(buf), p)) {
-    pclose(p);
-    fprintf(stderr, "parse_gen: warning: clang returned no output, defaulting to x86_64-unknown-linux-gnu\n");
-    return "x86_64-unknown-linux-gnu";
-  }
-  pclose(p);
-  size_t len = strlen(buf);
-  if (len > 0 && buf[len - 1] == '\n') {
-    buf[len - 1] = '\0';
-  }
-  return buf;
-}
-
 int main(int argc, char** argv) {
   const char* output = "build/nest_lex.ll";
   if (argc > 1) {
     output = argv[1];
   }
-
-  const char* triple = _detect_triple();
 
   FILE* f = fopen(output, "w");
   if (!f) {
@@ -605,7 +583,7 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  IrWriter* w = irwriter_new(f, triple);
+  IrWriter* w = irwriter_new(f, NULL);
   irwriter_start(w, "nest", ".");
 
   Lex* scopes[] = {
@@ -623,6 +601,6 @@ int main(int argc, char** argv) {
   irwriter_del(w);
   fclose(f);
 
-  printf("generated %s (triple=%s)\n", output, triple);
+  printf("generated %s\n", output);
   return 0;
 }

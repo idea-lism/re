@@ -42,6 +42,9 @@ static void _validate_name(const char* s, const char* label) {
 }
 
 static void _validate_triple(const char* s) {
+  if (!s) {
+    return;
+  }
   if (!*s) {
     fprintf(stderr, "irwriter: target_triple is empty\n");
     abort();
@@ -58,7 +61,9 @@ static void _validate_triple(const char* s) {
 }
 
 IrWriter* irwriter_new(FILE* out, const char* target_triple) {
-  _validate_triple(target_triple);
+  if (target_triple) {
+    _validate_triple(target_triple);
+  }
   IrWriter* w = calloc(1, sizeof(IrWriter));
   w->out = out;
   w->target_triple = target_triple;
@@ -82,7 +87,10 @@ void irwriter_start(IrWriter* w, const char* source_file, const char* directory)
   w->source_file = source_file;
   w->directory = directory;
   fprintf(w->out, "source_filename = \"%s\"\n", source_file);
-  fprintf(w->out, "target triple = \"%s\"\n\n", w->target_triple);
+  if (w->target_triple) {
+    fprintf(w->out, "target triple = \"%s\"\n", w->target_triple);
+  }
+  fprintf(w->out, "\n");
 }
 
 void irwriter_end(IrWriter* w) {
