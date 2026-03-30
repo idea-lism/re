@@ -65,7 +65,7 @@ unless IS_WINDOWS || File.exist?(KISSAT_LIB)
   FileUtils.rm_rf(dest)
   puts "Downloading kissat #{version}..."
   tarball = "build/kissat.tar.gz"
-  open(url) { |src| File.binwrite(tarball, src.read) }
+  URI.open(url) { |src| File.binwrite(tarball, src.read) }
   sh "tar", "xzf", tarball, "-C", "build", "--exclude=*/test/cnf/hard.cnf"
   File.delete(tarball)
   File.rename("build/kissat-#{version}", dest)

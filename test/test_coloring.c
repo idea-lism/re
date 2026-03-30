@@ -100,7 +100,7 @@ int main(void) {
   graph_del(g);
 
   g = graph_random_erdos_renyi(50, 0.2);
-  cr = coloring_solve(graph_n_vertices(g), graph_edges(g), graph_n_edges(g), 5, 10000, 42);
+  cr = coloring_solve(graph_n_vertices(g), graph_edges(g), graph_n_edges(g), 10, 10000, 42);
   assert(cr != NULL);
   assert(_verify_coloring(g, cr));
   coloring_result_del(cr);
