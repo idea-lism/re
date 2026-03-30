@@ -184,6 +184,7 @@ bool pp_inline_macros(ParseState* ps) {
       i += (int32_t)darray_size(macro->units) - 1;
     }
   }
+  return true;
 }
 
 bool pp_expand_keywords(ParseState* ps) {
@@ -233,6 +234,7 @@ bool pp_expand_keywords(ParseState* ps) {
   for (int32_t p = 0; p < (int32_t)darray_size(ps->peg_rules); p++) {
     _expand_kw_in_peg_unit(&ps->peg_rules[p].seq, ps);
   }
+  return true;
 }
 
 static void _collect_emit_set(ParseState* ps, VpaUnit* units, char*** set, char*** visited) {
@@ -368,54 +370,135 @@ static bool _validate_token_sets(ParseState* ps) {
   return true;
 }
 
-static void _auto_tag_unit(ParseState* ps, PegRule* rule, PegUnit* unit) {
+// --- Left recursion detection ---
+
+static bool _can_be_empty(PegUnit* unit) {
+  if (unit->multiplier == '?' || unit->multiplier == '*') {
+    return true;
+  }
+  if (unit->kind == PEG_BRANCHES) {
+    for (int32_t i = 0; i < (int32_t)darray_size(unit->children); i++) {
+      if ((int32_t)darray_size(unit->children[i].children) == 0) {
+        return true;
+      }
+    }
+  }
+  if (unit->kind == PEG_SEQ) {
+    for (int32_t i = 0; i < (int32_t)darray_size(unit->children); i++) {
+      if (!_can_be_empty(&unit->children[i])) {
+        return false;
+      }
+    }
+    return true;
+  }
+  return false;
+}
+
+static bool _check_left_rec(ParseState* ps, PegUnit* unit, const char* target, char*** visiting) {
+  switch (unit->kind) {
+  case PEG_ID:
+    if (!unit->name) {
+      break;
+    }
+    if (strcmp(unit->name, target) == 0) {
+      return true;
+    }
+    if (_str_set_has(*visiting, unit->name)) {
+      break;
+    }
+    {
+      PegRule* ref = _find_peg_rule(ps, unit->name);
+      if (ref) {
+        _str_set_add(visiting, unit->name);
+        if (_check_left_rec(ps, &ref->seq, target, visiting)) {
+          return true;
+        }
+      }
+    }
+    break;
+  case PEG_TOK:
+    break;
+  case PEG_BRANCHES:
+    for (int32_t i = 0; i < (int32_t)darray_size(unit->children); i++) {
+      if (_check_left_rec(ps, &unit->children[i], target, visiting)) {
+        return true;
+      }
+    }
+    break;
+  case PEG_SEQ:
+    for (int32_t i = 0; i < (int32_t)darray_size(unit->children); i++) {
+      if (_check_left_rec(ps, &unit->children[i], target, visiting)) {
+        return true;
+      }
+      if (!_can_be_empty(&unit->children[i])) {
+        break;
+      }
+    }
+    break;
+  }
+  return false;
+}
+
+bool pp_detect_left_recursions(ParseState* ps) {
+  for (int32_t r = 0; r < (int32_t)darray_size(ps->peg_rules); r++) {
+    PegRule* rule = &ps->peg_rules[r];
+    char** visiting = darray_new(sizeof(char*), 0);
+    _str_set_add(&visiting, rule->name);
+    bool found = _check_left_rec(ps, &rule->seq, rule->name, &visiting);
+    _str_set_free(visiting);
+    if (found) {
+      parse_error(ps, "left recursion detected in rule '%s'", rule->name);
+      return false;
+    }
+  }
+  return true;
+}
+
+// --- Auto-tagging ---
+
+static bool _auto_tag_unit(ParseState* ps, PegRule* rule, PegUnit* unit) {
   if (unit->kind == PEG_BRANCHES) {
     for (int32_t i = 0; i < (int32_t)darray_size(unit->children); i++) {
       PegUnit* branch = &unit->children[i];
       if (!branch->tag || branch->tag[0] == '\0') {
         if ((int32_t)darray_size(branch->children) > 0) {
           PegUnit* first = &branch->children[0];
-          if (first->kind == PEG_ID && first->name && first->name[0]) {
+          if ((first->kind == PEG_ID || first->kind == PEG_TOK) && first->name && first->name[0]) {
             free(branch->tag);
             branch->tag = strdup(first->name);
           }
         }
         if (!branch->tag || branch->tag[0] == '\0') {
           parse_error(ps, "branch in rule '%s' must have an explicit tag", rule->name);
-          return;
-        }
-      }
-    }
-
-    for (int32_t i = 0; i < (int32_t)darray_size(unit->children); i++) {
-      for (int32_t j = i + 1; j < (int32_t)darray_size(unit->children); j++) {
-        if (unit->children[i].tag && unit->children[i].tag[0] && unit->children[j].tag && unit->children[j].tag[0] &&
-            strcmp(unit->children[i].tag, unit->children[j].tag) == 0) {
-          parse_error(ps, "duplicate tag '%s' in rule '%s'", unit->children[i].tag, rule->name);
-          return;
+          return false;
         }
       }
     }
   }
 
   for (int32_t i = 0; i < (int32_t)darray_size(unit->children); i++) {
-    _auto_tag_unit(ps, rule, &unit->children[i]);
+    if (!_auto_tag_unit(ps, rule, &unit->children[i])) {
+      return false;
+    }
   }
   if (unit->interlace) {
-    _auto_tag_unit(ps, rule, unit->interlace);
+    if (!_auto_tag_unit(ps, rule, unit->interlace)) {
+      return false;
+    }
   }
+  return true;
 }
 
 bool pp_auto_tag_branches(ParseState* ps) {
   for (int32_t r = 0; r < (int32_t)darray_size(ps->peg_rules); r++) {
-    // TODO: branch not taggable
-    _auto_tag_unit(ps, &ps->peg_rules[r], &ps->peg_rules[r].seq);
+    if (!_auto_tag_unit(ps, &ps->peg_rules[r], &ps->peg_rules[r].seq)) {
+      return false;
+    }
   }
   return true;
 }
 
 bool pp_check_duplicate_tags(ParseState* ps) {
-  // TODO: return error
   for (int32_t r = 0; r < (int32_t)darray_size(ps->peg_rules); r++) {
     PegRule* rule = &ps->peg_rules[r];
     char** tags = darray_new(sizeof(char*), 0);
@@ -433,15 +516,16 @@ bool pp_check_duplicate_tags(ParseState* ps) {
         for (int32_t k = 0; k < (int32_t)darray_size(tags); k++) {
           if (strcmp(tags[k], tag) == 0) {
             parse_error(ps, "duplicate tag '%s' across bracket groups in rule '%s'", tag, rule->name);
-            goto next_rule;
+            darray_del(tags);
+            return false;
           }
         }
         darray_push(tags, tag);
       }
     }
-  next_rule:
     darray_del(tags);
   }
+  return true;
 }
 
 bool pp_validate(ParseState* ps) {
@@ -454,6 +538,18 @@ bool pp_validate(ParseState* ps) {
   }
   if (!has_vpa_main) {
     parse_error(ps, "'main' rule must exist in [[vpa]]");
+    return false;
+  }
+
+  bool has_peg_main = false;
+  for (int32_t i = 0; i < (int32_t)darray_size(ps->peg_rules); i++) {
+    if (strcmp(ps->peg_rules[i].name, "main") == 0) {
+      has_peg_main = true;
+      break;
+    }
+  }
+  if (!has_peg_main) {
+    parse_error(ps, "'main' rule must exist in [[peg]]");
     return false;
   }
 
@@ -510,6 +606,14 @@ bool pp_validate(ParseState* ps) {
     }
     if (has_begin && !has_end) {
       parse_error(ps, "scope '%s' missing .end", rule->name);
+      return false;
+    }
+    if (!has_begin && has_end) {
+      parse_error(ps, "scope '%s' missing .begin", rule->name);
+      return false;
+    }
+    if (!has_begin && !has_end) {
+      parse_error(ps, "scope '%s' missing .begin and .end", rule->name);
       return false;
     }
   }

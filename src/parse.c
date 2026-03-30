@@ -66,18 +66,26 @@ void parse_error(ParseState* ps, const char* fmt, ...) {
 
 // --- String allocation helpers ---
 
-static char* _tok_strdup(ParseState* ps, Token* t) {
-  char* u = ustr_slice(ps->src, t->cp_start, t->cp_start + t->cp_size);
-  char* s = strdup(u);
-  ustr_del(u);
+static char* _cp_strdup(const char* src, int32_t cp_start, int32_t cp_size) {
+  UstrIter it = {0};
+  ustr_iter_init(&it, src, cp_start);
+  int32_t start_byte = it.byte_off;
+  for (int32_t i = 0; i < cp_size; i++) {
+    ustr_iter_next(&it);
+  }
+  int32_t byte_len = it.byte_off - start_byte;
+  char* s = malloc((size_t)byte_len + 1);
+  memcpy(s, src + start_byte, (size_t)byte_len);
+  s[byte_len] = '\0';
   return s;
 }
 
+static char* _tok_strdup(ParseState* ps, Token* t) {
+  return _cp_strdup(ps->src, t->cp_start, t->cp_size);
+}
+
 static char* _tok_strdup_skip(ParseState* ps, Token* t, int32_t skip) {
-  char* u = ustr_slice(ps->src, t->cp_start + skip, t->cp_start + t->cp_size);
-  char* s = strdup(u);
-  ustr_del(u);
-  return s;
+  return _cp_strdup(ps->src, t->cp_start + skip, t->cp_size - skip);
 }
 
 __attribute__((format(printf, 1, 2))) char* parse_sfmt(const char* fmt, ...) {
@@ -141,56 +149,22 @@ static void _lex_scope(LexCtx* ctx, ScopeId scope_id);
 // --- Decode a codepoint from a token span ---
 
 static int32_t _decode_codepoint(const char* src, Token* t) {
-  char* s = ustr_slice(src, t->cp_start, t->cp_start + t->cp_size);
-  int32_t len = t->cp_size;
-  int32_t result;
-  if (t->tok_id == TOK_CHAR) {
-    UstrIter it = {0};
-    ustr_iter_init(&it, s, len);
-    result = ustr_iter_next(&it);
-    ustr_del(s);
-    return result;
-  }
-  if (t->tok_id == TOK_CODEPOINT) {
-    // \u{XX..} — all ASCII, byte offsets == codepoint offsets
-    result = re_hex_to_codepoint(s + 2, (size_t)(len - 3));
-    ustr_del(s);
-    return result;
-  }
-  if (t->tok_id == TOK_C_ESCAPE) {
-    // \n, \t etc — always ASCII
-    if (len >= 2) {
-      int32_t esc = re_c_escape(s[1]);
-      if (esc >= 0) {
-        ustr_del(s);
-        return esc;
-      }
-      result = s[1];
-      ustr_del(s);
-      return result;
-    }
-    result = s[0];
-    ustr_del(s);
-    return result;
-  }
-  if (t->tok_id == TOK_PLAIN_ESCAPE) {
-    // \X — skip the '\' (1 ASCII byte), decode the next codepoint
-    if (len >= 2) {
-      UstrIter it = {0};
-      ustr_iter_init(&it, s + 1, len - 1);
-      result = ustr_iter_next(&it);
-      ustr_del(s);
-      return result;
-    }
-    result = s[0];
-    ustr_del(s);
-    return result;
-  }
   UstrIter it = {0};
-  ustr_iter_init(&it, s, len);
-  result = ustr_iter_next(&it);
-  ustr_del(s);
-  return result;
+  ustr_iter_init(&it, src, t->cp_start);
+  const char* p = src + it.byte_off;
+
+  if (t->tok_id == TOK_CODEPOINT) {
+    return re_hex_to_codepoint(p + 2, (size_t)(t->cp_size - 3));
+  }
+  if (t->tok_id == TOK_C_ESCAPE && t->cp_size >= 2) {
+    int32_t esc = re_c_escape(p[1]);
+    return esc >= 0 ? esc : (int32_t)(unsigned char)p[1];
+  }
+  if (t->tok_id == TOK_PLAIN_ESCAPE && t->cp_size >= 2) {
+    ustr_iter_next(&it);
+    return ustr_iter_next(&it);
+  }
+  return ustr_iter_next(&it);
 }
 
 // --- ReIr parsing from token chunk (recursive descent) ---
@@ -232,15 +206,17 @@ static void _parse_charclass(ReParseCtx* rctx, ReIr* ir) {
   }
   re_ir_emit(ir, RE_IR_RANGE_BEGIN, 0, 0);
 
-  char* text = ustr_slice(rctx->ps->src, begin->cp_start, begin->cp_start + begin->cp_size);
   bool neg = false;
-  for (const char* p = text; *p; p++) {
-    if (*p == '^') {
-      neg = true;
-      break;
+  {
+    UstrIter nit = {0};
+    ustr_iter_init(&nit, rctx->ps->src, begin->cp_start);
+    for (int32_t i = 0; i < begin->cp_size; i++) {
+      if (ustr_iter_next(&nit) == '^') {
+        neg = true;
+        break;
+      }
     }
   }
-  ustr_del(text);
   if (neg) {
     re_ir_emit(ir, RE_IR_RANGE_NEG, 0, 0);
   }
@@ -390,7 +366,7 @@ static void _parse_re_quantified(ReParseCtx* rctx, ReIr* ir) {
   if (q->tok_id == TOK_RE_OPS_MAYBE) {
     _re_next(rctx);
     ReIrOp lparen = {RE_IR_LPAREN, 0, 0};
-    *ir = darray_grow(*ir, darray_size(*ir) + 3);
+    *ir = darray_grow(*ir, darray_size(*ir) + 1);
     memmove(&(*ir)[unit_start + 1], &(*ir)[unit_start], (size_t)(unit_end - unit_start) * sizeof(ReIrOp));
     (*ir)[unit_start] = lparen;
     re_ir_emit(ir, RE_FORK, 0, 0);
@@ -406,7 +382,7 @@ static void _parse_re_quantified(ReParseCtx* rctx, ReIr* ir) {
   } else if (q->tok_id == TOK_RE_OPS_STAR) {
     _re_next(rctx);
     ReIrOp lparen = {RE_IR_LPAREN, 0, 0};
-    *ir = darray_grow(*ir, darray_size(*ir) + 3);
+    *ir = darray_grow(*ir, darray_size(*ir) + 1);
     memmove(&(*ir)[unit_start + 1], &(*ir)[unit_start], (size_t)(unit_end - unit_start) * sizeof(ReIrOp));
     (*ir)[unit_start] = lparen;
     for (int32_t i = unit_start + 1; i <= unit_end; i++) {
@@ -445,25 +421,24 @@ static ReIr _parse_re_tokens(ParseState* ps, Token* tokens, int32_t count, bool 
 // --- Scope-specific lex handlers ---
 
 static void _handle_re_scope(LexCtx* ctx, int32_t tag_start, int32_t tag_size) {
-  // push a child chunk for the re scope, lex into it
-  TokenChunk* parent = ctx->tree->current;
+  int32_t child_idx = (int32_t)darray_size(ctx->tree->table);
   _lex_scope(ctx, SCOPE_RE);
-  // the child chunk was pushed/popped by _lex_scope; it's the last entry in the table
-  int32_t child_idx = (int32_t)darray_size(ctx->tree->table) - 1;
   TokenChunk* child = &ctx->tree->table[child_idx];
 
-  // parse mode flags from the re_tag token text
   bool icase = false;
-  char* tag_text = ustr_slice(ctx->ps->src, tag_start, tag_start + tag_size);
-  for (const char* p = tag_text; *p; p++) {
-    if (*p == '/') {
-      break;
-    }
-    if (*p == 'i') {
-      icase = true;
+  {
+    UstrIter fit = {0};
+    ustr_iter_init(&fit, ctx->ps->src, tag_start);
+    for (int32_t i = 0; i < tag_size; i++) {
+      int32_t ch = ustr_iter_next(&fit);
+      if (ch == '/') {
+        break;
+      }
+      if (ch == 'i') {
+        icase = true;
+      }
     }
   }
-  ustr_del(tag_text);
 
   int32_t count = (int32_t)darray_size(child->tokens);
   ReIr ir = _parse_re_tokens(ctx->ps, child->tokens, count, icase);
@@ -474,13 +449,13 @@ static void _handle_re_scope(LexCtx* ctx, int32_t tag_start, int32_t tag_size) {
   int32_t idx = (int32_t)darray_size(ctx->ps->re_irs);
   darray_push(ctx->ps->re_irs, ir);
 
-  tc_add(parent, (Token){.tok_id = TOK_RE_AST_BASE + idx, .cp_start = tag_start, .cp_size = tag_size});
+  tc_add(ctx->tree->current,
+         (Token){.tok_id = TOK_RE_AST_BASE + idx, .cp_start = tag_start, .cp_size = tag_size});
 }
 
 static void _handle_str_scope(LexCtx* ctx, ScopeId scope_id, int32_t tok_cp_start, int32_t tok_id_base) {
-  TokenChunk* parent = ctx->tree->current;
+  int32_t child_idx = (int32_t)darray_size(ctx->tree->table);
   _lex_scope(ctx, scope_id);
-  int32_t child_idx = (int32_t)darray_size(ctx->tree->table) - 1;
   TokenChunk* child = &ctx->tree->table[child_idx];
 
   StrSpan span = _build_str_span(child);
@@ -492,7 +467,8 @@ static void _handle_str_scope(LexCtx* ctx, ScopeId scope_id, int32_t tok_cp_star
   darray_push(ctx->ps->str_spans, span);
 
   int32_t cp_size = ctx->it.cp_idx - tok_cp_start;
-  tc_add(parent, (Token){.tok_id = tok_id_base + idx, .cp_start = tok_cp_start, .cp_size = cp_size});
+  tc_add(ctx->tree->current,
+         (Token){.tok_id = tok_id_base + idx, .cp_start = tok_cp_start, .cp_size = cp_size});
 }
 
 // --- Pushdown automaton lexer ---
@@ -510,8 +486,8 @@ static void _lex_scope(LexCtx* ctx, ScopeId scope_id) {
   };
   ScopeConfig cfg = configs[scope_id];
 
-  TokenChunk* chunk = tc_push(ctx->tree);
-  chunk->scope_id = scope_id;
+  tc_push(ctx->tree);
+  ctx->tree->current->scope_id = scope_id;
 
   int64_t state = 0;
   int32_t last_action = 0;
@@ -543,7 +519,8 @@ static void _lex_scope(LexCtx* ctx, ScopeId scope_id) {
           _lex_scope(ctx, last_action);
         }
       } else {
-        tc_add(chunk, (Token){.tok_id = last_action, .cp_start = tok_cp_start, .cp_size = cp_cp_idx - tok_cp_start});
+        tc_add(ctx->tree->current,
+               (Token){.tok_id = last_action, .cp_start = tok_cp_start, .cp_size = cp_cp_idx - tok_cp_start});
       }
 
       if (cp == LEX_CP_EOF) {
@@ -649,16 +626,19 @@ static bool _parse_vpa_regexp(ParseState* ps, VpaRule* rule) {
   ps->re_irs[ir_idx] = NULL;
 
   unit.binary_mode = false;
-  char* tag_text = ustr_slice(ps->src, t->cp_start, t->cp_start + t->cp_size);
-  for (const char* p = tag_text; *p; p++) {
-    if (*p == '/') {
-      break;
-    }
-    if (*p == 'b') {
-      unit.binary_mode = true;
+  {
+    UstrIter fit = {0};
+    ustr_iter_init(&fit, ps->src, t->cp_start);
+    for (int32_t i = 0; i < t->cp_size; i++) {
+      int32_t ch = ustr_iter_next(&fit);
+      if (ch == '/') {
+        break;
+      }
+      if (ch == 'b') {
+        unit.binary_mode = true;
+      }
     }
   }
-  ustr_del(tag_text);
 
   _parse_unit_followups(ps, &unit, rule);
   _add_vpa_unit(rule, unit);
@@ -980,9 +960,7 @@ static bool _parse_peg_unit(ParseState* ps, PegUnit* unit) {
     _next(ps);
     unit->kind = PEG_TOK;
     StrSpan span = ps->str_spans[t->tok_id - TOK_STR_SPAN_BASE];
-    char* u = ustr_slice(ps->src, span.off, span.off + span.len);
-    unit->name = strdup(u);
-    ustr_del(u);
+    unit->name = _cp_strdup(ps->src, span.off, span.len);
   } else if (t->tok_id == TOK_BRANCHES_BEGIN) {
     _next(ps);
     unit->kind = PEG_BRANCHES;

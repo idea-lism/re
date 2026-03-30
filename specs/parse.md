@@ -28,10 +28,7 @@ The overall handling with this syntax:
 2. implement a manual pushdown automata in `src/parse.c`, utilizing lexers defined by `src/parse_gen.c`.
 3. implement recursive descendent parsers in `src/parse.c` to:
    - recursive descend parse the whole source
-   - the token chunk helper lives in `src/token_chunk.c`
-   - post-process:
-     - expand the `%keyword` sugar
-     - inline macro vpa rules
+   - utilize [token chunk](src/token_chunk.h)
 
 Resulting interface:
 
@@ -75,10 +72,7 @@ First implementation of the syntax, must be a manual recursive descendant parser
 
 the semantic:
 - `main` is the entrance
-- `%keyword` is syntax sugar:
-  - for example, `%keyword ops "=" "|"` expands to regexp rules `/=/ @ops.=` and `/|/ @ops.|`
-    - then in PEG, `"="` is replaced with `@ops.=`, `"|"` with `@ops.|`
-  - token names are `group.literal` — no identifier restrictions at the AST level
+- `%keyword` is syntax sugar which will be expanded at [post_process](post_process.md)
 - `.on_*` hooks (e.g. `.on_tok_def`, `.on_id`, `.on_assign`) are user-defined semantic hooks referenced via `\.{id}` pattern. They fire during lexing for semantic actions (tracking definitions, resolving names, etc.) but don't affect the token stream unless combined with `%effect`.
 - Visibly pushdown automata
   - scope
@@ -102,7 +96,7 @@ tok1 tok2 scope1 tok7 tok8
 
 ### The peg `[[peg]]`
 
-Parsing expression grammar, Impl in `src/peg.c`, additional impl doc `specs/peg.md`.
+Define parsing expression grammar
 
 tokens include:
 - `[a-z_]\w*` if after a ":", assign tag id for this branch, else is PEG rule id
@@ -121,34 +115,7 @@ tokens include:
 
 branch tagging syntax
 - each branch has a tag (denoted by `: the_tag`)
-- if no tag given, it is auto-tagged with the first token / sub_rule name
-- in a rule definition, tags must be distinct, or the parser will raise an error on conflict tag names
-- epsilon branch can have a tag too, for example:
-
-branch tagging example:
-
-```conf
-foo = a [
-  @foo bar # not specifying, induce tag "foo" by first token
-  sub_rule # not specifying, induce tag "sub_rule" by first sub rule
-  @foo : tag2 # tag "foo" already used, must specify tag so there won't be conflict
-  "a-keyword" : tag3 # tag can't be induced by keyword literal, so tag it manually
-  : tag4             # epsilon branch needs to be tagged
-]
-```
-
-When there are multiple branches in one rule, all branches are tagged. for example:
-
-```conf
-# resulting rule will have 4 branch tags b1 .. b4
-foo = a [
-  b1
-  b2
-] [
-  b3
-  b4
-]
-```
+- if no tag given, it is auto-tagged by [post_process](post_process.md).
 
 PEG semantics:
 - if there's id named `main` , it is the entrance. there must be one entrance
@@ -189,8 +156,6 @@ When met `re_ref` sub-scope, replace the scope chunk with the `%define`-ed regex
 
 Note that `%define` can reference each other, must avoid infinite recursions.
 
-Regexp is parsed into [re_ir](src/re_ir.h).s
-
 ### Recursive descend parsing
 
 - Token ids are allocated scopes too
@@ -198,7 +163,7 @@ Regexp is parsed into [re_ir](src/re_ir.h).s
   - the input token stream buffer is a scoped chunk
   - no expand sub-scope parsing -- sub-scopes are just a token_id match
 - String literals are stored with source offset + length, no extra allocations for them
-- Regexps are converted to IR that can be used by `src/vpa.c`
+- Regexps are converted to [IR](re_ir.md)
 - When a scope is complete (at `.end` hook), it should invoke recursive descend parsing on the token stream chunk
 
 ### What is FORBIDDEN, a no-go

@@ -1,0 +1,67 @@
+# Post-process AST and validate it
+
+Create "src/post_process.c".
+
+### vpa: inline macros
+
+`bool pp_inline_macros(ParseState* ps);`:
+- inline macro vpa rules
+
+### peg: auto tag branches
+
+`bool pp_auto_tag_branches(ParseState* ps);`:
+- with the first token / sub_rule name
+- in a rule definition, tags must be distinct, or the parser will raise an error on conflict tag names
+- epsilon branch can have a tag too, for example:
+
+### peg: tag logic
+
+`bool pp_check_duplicate_tags(ParseState* ps);`:
+branch tagging example:
+
+```conf
+foo = a [
+  @foo bar # not specifying, induce tag "foo" by first token
+  sub_rule # not specifying, induce tag "sub_rule" by first sub rule
+  @foo : tag2 # tag "foo" already used, must specify tag so there won't be conflict
+  "a-keyword" : tag3 # tag can't be induced by keyword literal, so tag it manually
+  : tag4             # epsilon branch needs to be tagged
+]
+```
+
+When there are multiple branches in one rule, all branches are tagged. for example:
+
+```conf
+# resulting rule will have 4 branch tags b1 .. b4
+foo = a [
+  b1
+  b2
+] [
+  b3
+  b4
+]
+```
+
+### peg: left recursion detect
+
+`bool pp_detect_left_recursions(ParseState* ps)`:
+- walk down peg rules to detect left recursions -- we don't allow it
+
+### vpa & peg: keyword matching & expansion
+
+`bool pp_expand_keywords(ParseState* ps);`:
+- expand the `%keyword` sugar
+- for example, `%keyword ops "=" "|"` expands to regexp rules `/=/ @ops.=` and `/|/ @ops.|`
+  - then in PEG, `"="` is replaced with `@ops.=`, `"|"` with `@ops.|`
+- token names are `{group}.{literal}` — no identifier restrictions at the AST level
+
+### other validations
+
+`bool pp_validate(ParseState* ps);`:
+- `main` must exist in `[[vpa]]` and `[[peg]]`
+- each scope in `[[vpa]]` must have a `.begin` (or user hook that produces the `.begin` effect) and one or more `.end` (or user hook that produces the `end` effect)
+- for a same scope, used token set in `[[peg]]` must be the same as emit token set in `[[vpa]]`
+  - for example, 
+    - with vpa rule `foo = /.../ @a`, `bar = foo @b`, `bar`'s emit token set is `{@a, @b}` (including descendant's)
+    - with peg rule `foo = @c?`, `bar = foo @b`, `bar`'s used token set is `{@c, @b}`, this doesn't equal to the vpa rule's token set
+    - it is a mismatch, then we should raise error to tell user this rule doesn't add up
