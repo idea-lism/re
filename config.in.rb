@@ -53,6 +53,12 @@ exe "test_parse",
   extra_objs: nest_lex,
   ext_libs: kissat
 
+exe "test_post_process",
+  srcs: base + %w[test/test_post_process.c test/compat.c],
+  deps: %w[ustr],
+  extra_objs: nest_lex,
+  ext_libs: kissat
+
 exe "nest",
   srcs: base + %w[src/nest.c],
   deps: %w[ustr],

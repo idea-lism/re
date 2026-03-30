@@ -29,7 +29,7 @@ ReIr re_ir_build_literal(const char* src, int32_t cp_off, int32_t cp_len) {
   char* s = ustr_slice(src, cp_off, cp_off + cp_len);
   int32_t size = ustr_size(s);
   UstrIter it = {0};
-  ustr_iter_init(&it, s, size);
+  ustr_iter_init(&it, s, 0);
   for (int32_t i = 0; i < size; i++) {
     int32_t cp = ustr_iter_next(&it);
     if (cp < 0) {
@@ -107,6 +107,8 @@ void re_ir_exec(Re* re, ReIr ir, DebugInfo di) {
       break;
     case RE_IR_ACTION:
       re_action(re, op->start);
+      break;
+    case RE_IR_FRAG_REF:
       break;
     }
   }

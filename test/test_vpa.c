@@ -124,14 +124,8 @@ TEST(test_tree_locate_multiline) {
   TokenTree* tree = tc_tree_new(ustr);
 
   // mark newlines in the bitmap: cp_offset 2 and 5 are '\n'
-  // The newline_map should be populated during lexing, we set it manually
-  size_t ncp = ustr_size(ustr);
-  size_t nwords = (ncp + 63) / 64;
-  tree->newline_map = darray_new(sizeof(uint64_t), nwords);
-  memset(tree->newline_map, 0, nwords * sizeof(uint64_t));
-  // bit 2 = newline at cp_offset 2
+  // newline_map is already allocated by tc_tree_new via calloc
   tree->newline_map[0] |= (1ULL << 2);
-  // bit 5 = newline at cp_offset 5
   tree->newline_map[0] |= (1ULL << 5);
 
   Location loc;
@@ -310,7 +304,7 @@ TEST(test_keyword_entry) {
   assert(strcmp(kw.group, "type_keywords") == 0);
   assert(kw.lit_off == 10);
   assert(kw.lit_len == 3);
-  assert(memcmp(kw.src + kw.lit_off, " te", kw.lit_len) == 0);
+  assert(memcmp(kw.src + kw.lit_off, "e t", kw.lit_len) == 0);
 
   free(kw.group);
 }

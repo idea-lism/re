@@ -20,6 +20,7 @@ char* ustr_slice(const char* s, int32_t cp_start, int32_t cp_end);
 int32_t ustr_bytesize(const char* s);
 int32_t ustr_size(const char* s);
 
+// iterator works on the codepoint level, not byte level
 typedef struct {
   const char* s;
   int32_t size;
@@ -30,7 +31,7 @@ typedef struct {
   int32_t col;
 } UstrIter;
 
-void ustr_iter_init(UstrIter* it, const char* s, int32_t char_offset);
+void ustr_iter_init(UstrIter* it, const char* s, int32_t cp_offset);
 int32_t ustr_iter_next(UstrIter* it);
 
 int32_t ustr_decode_cp(const uint8_t* p, int32_t* adv);

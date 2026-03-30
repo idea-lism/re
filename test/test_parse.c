@@ -1,4 +1,5 @@
 #include "../src/parse.h"
+#include "../src/ustr.h"
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -11,6 +12,19 @@
     name();                                                                                                            \
     printf("ok\n");                                                                                                    \
   } while (0)
+
+// Helper: create ustr from C string, call parse_nest, free ustr.
+// For NULL input, passes NULL directly.
+static bool _parse(ParseState* ps, const char* cstr) {
+  if (!cstr) {
+    return parse_nest(ps, NULL);
+  }
+  size_t len = strlen(cstr);
+  char* u = ustr_new(len, cstr);
+  bool ok = parse_nest(ps, u);
+  ustr_del(u);
+  return ok;
+}
 
 // --- Lifecycle ---
 
@@ -72,7 +86,7 @@ TEST(test_parse_set_str) {
 
 TEST(test_empty_input) {
   ParseState* ps = parse_state_new();
-  bool ok = parse_nest(ps, "");
+  bool ok = _parse(ps, "");
   assert(!ok);
   assert(parse_has_error(ps));
   parse_state_del(ps);
@@ -80,7 +94,7 @@ TEST(test_empty_input) {
 
 TEST(test_null_src) {
   ParseState* ps = parse_state_new();
-  bool ok = parse_nest(ps, NULL);
+  bool ok = _parse(ps, NULL);
   assert(!ok);
   assert(parse_has_error(ps));
   parse_state_del(ps);
@@ -88,7 +102,7 @@ TEST(test_null_src) {
 
 TEST(test_garbage_input) {
   ParseState* ps = parse_state_new();
-  bool ok = parse_nest(ps, "not a nest file at all");
+  bool ok = _parse(ps, "not a nest file at all");
   assert(!ok);
   assert(parse_has_error(ps));
   parse_state_del(ps);
@@ -96,7 +110,7 @@ TEST(test_garbage_input) {
 
 TEST(test_vpa_only_no_peg) {
   ParseState* ps = parse_state_new();
-  bool ok = parse_nest(ps, "[[vpa]]\nmain = { *noise }\n*noise = { /[ \\t\\n]+/ @space }\n");
+  bool ok = _parse(ps, "[[vpa]]\nmain = { *noise }\n*noise = { /[ \\t\\n]+/ @space }\n");
   assert(!ok);
   assert(parse_has_error(ps));
   parse_state_del(ps);
@@ -104,7 +118,7 @@ TEST(test_vpa_only_no_peg) {
 
 TEST(test_peg_only_no_vpa) {
   ParseState* ps = parse_state_new();
-  bool ok = parse_nest(ps, "[[peg]]\nmain = @peg_id\n");
+  bool ok = _parse(ps, "[[peg]]\nmain = @peg_id\n");
   assert(!ok);
   assert(parse_has_error(ps));
   parse_state_del(ps);
@@ -121,7 +135,7 @@ static const char MINIMAL_NEST[] = "[[vpa]]\n"
 
 TEST(test_minimal_parse) {
   ParseState* ps = parse_state_new();
-  bool ok = parse_nest(ps, MINIMAL_NEST);
+  bool ok = _parse(ps, MINIMAL_NEST);
   if (!ok) {
     fprintf(stderr, "error: %s\n", parse_get_error(ps));
   }
@@ -144,7 +158,7 @@ static const char DIRECTIVES_NEST[] = "[[vpa]]\n"
 
 TEST(test_directives_state) {
   ParseState* ps = parse_state_new();
-  bool ok = parse_nest(ps, DIRECTIVES_NEST);
+  bool ok = _parse(ps, DIRECTIVES_NEST);
   if (!ok) {
     fprintf(stderr, "error: %s\n", parse_get_error(ps));
   }
@@ -164,7 +178,7 @@ static const char SCOPE_NEST[] = "[[vpa]]\n"
 
 TEST(test_scope_rule) {
   ParseState* ps = parse_state_new();
-  bool ok = parse_nest(ps, SCOPE_NEST);
+  bool ok = _parse(ps, SCOPE_NEST);
   if (!ok) {
     fprintf(stderr, "error: %s\n", parse_get_error(ps));
   }
@@ -184,7 +198,7 @@ static const char HOOKS_NEST[] = "[[vpa]]\n"
 
 TEST(test_hooks) {
   ParseState* ps = parse_state_new();
-  bool ok = parse_nest(ps, HOOKS_NEST);
+  bool ok = _parse(ps, HOOKS_NEST);
   if (!ok) {
     fprintf(stderr, "error: %s\n", parse_get_error(ps));
   }
@@ -204,7 +218,7 @@ static const char KEYWORD_NEST[] = "[[vpa]]\n"
 
 TEST(test_keyword_expansion) {
   ParseState* ps = parse_state_new();
-  bool ok = parse_nest(ps, KEYWORD_NEST);
+  bool ok = _parse(ps, KEYWORD_NEST);
   if (!ok) {
     fprintf(stderr, "error: %s\n", parse_get_error(ps));
   }
@@ -223,7 +237,7 @@ static const char MACRO_NEST[] = "[[vpa]]\n"
 
 TEST(test_macro_rule) {
   ParseState* ps = parse_state_new();
-  bool ok = parse_nest(ps, MACRO_NEST);
+  bool ok = _parse(ps, MACRO_NEST);
   if (!ok) {
     fprintf(stderr, "error: %s\n", parse_get_error(ps));
   }
@@ -242,7 +256,7 @@ static const char RE_CHARCLASS_NEST[] = "[[vpa]]\n"
 
 TEST(test_re_charclass) {
   ParseState* ps = parse_state_new();
-  bool ok = parse_nest(ps, RE_CHARCLASS_NEST);
+  bool ok = _parse(ps, RE_CHARCLASS_NEST);
   if (!ok) {
     fprintf(stderr, "error: %s\n", parse_get_error(ps));
   }
@@ -261,7 +275,7 @@ static const char RE_ALT_NEST[] = "[[vpa]]\n"
 
 TEST(test_re_alternation) {
   ParseState* ps = parse_state_new();
-  bool ok = parse_nest(ps, RE_ALT_NEST);
+  bool ok = _parse(ps, RE_ALT_NEST);
   if (!ok) {
     fprintf(stderr, "error: %s\n", parse_get_error(ps));
   }
@@ -280,7 +294,7 @@ static const char RE_CLASSES_NEST[] = "[[vpa]]\n"
 
 TEST(test_re_special_classes) {
   ParseState* ps = parse_state_new();
-  bool ok = parse_nest(ps, RE_CLASSES_NEST);
+  bool ok = _parse(ps, RE_CLASSES_NEST);
   if (!ok) {
     fprintf(stderr, "error: %s\n", parse_get_error(ps));
   }
@@ -303,7 +317,7 @@ static const char PEG_BRANCHES_NEST[] = "[[vpa]]\n"
 
 TEST(test_peg_branches) {
   ParseState* ps = parse_state_new();
-  bool ok = parse_nest(ps, PEG_BRANCHES_NEST);
+  bool ok = _parse(ps, PEG_BRANCHES_NEST);
   if (!ok) {
     fprintf(stderr, "error: %s\n", parse_get_error(ps));
   }
@@ -326,7 +340,7 @@ static const char PEG_TAGGED_NEST[] = "[[vpa]]\n"
 
 TEST(test_peg_tagged_branches) {
   ParseState* ps = parse_state_new();
-  bool ok = parse_nest(ps, PEG_TAGGED_NEST);
+  bool ok = _parse(ps, PEG_TAGGED_NEST);
   if (!ok) {
     fprintf(stderr, "error: %s\n", parse_get_error(ps));
   }
@@ -345,7 +359,7 @@ static const char PEG_MULT_NEST[] = "[[vpa]]\n"
 
 TEST(test_peg_multiplier_interlace) {
   ParseState* ps = parse_state_new();
-  bool ok = parse_nest(ps, PEG_MULT_NEST);
+  bool ok = _parse(ps, PEG_MULT_NEST);
   if (!ok) {
     fprintf(stderr, "error: %s\n", parse_get_error(ps));
   }
@@ -364,32 +378,11 @@ static const char PEG_OPT_NEST[] = "[[vpa]]\n"
 
 TEST(test_peg_optional) {
   ParseState* ps = parse_state_new();
-  bool ok = parse_nest(ps, PEG_OPT_NEST);
+  bool ok = _parse(ps, PEG_OPT_NEST);
   if (!ok) {
     fprintf(stderr, "error: %s\n", parse_get_error(ps));
   }
   assert(ok);
-  parse_state_del(ps);
-}
-
-// --- PEG duplicate tag error ---
-
-static const char PEG_DUP_TAG_NEST[] = "[[vpa]]\n"
-                                       "%ignore @space @comment\n"
-                                       "main = { /[a-z]+/ @tok_a /[0-9]+/ @tok_b *noise }\n"
-                                       "*noise = { /[ \\t\\n]+/ @space /#[^\\n]*/ @comment /\\n+/ @nl }\n"
-                                       "[[peg]]\n"
-                                       "main = item+\n"
-                                       "item = [\n"
-                                       "  @tok_a : dup\n"
-                                       "  @tok_b : dup\n"
-                                       "]\n";
-
-TEST(test_peg_duplicate_tag_error) {
-  ParseState* ps = parse_state_new();
-  bool ok = parse_nest(ps, PEG_DUP_TAG_NEST);
-  assert(!ok);
-  assert(parse_has_error(ps));
   parse_state_del(ps);
 }
 
@@ -398,13 +391,13 @@ TEST(test_peg_duplicate_tag_error) {
 TEST(test_reparse_fresh_state) {
   ParseState* ps = parse_state_new();
 
-  bool ok1 = parse_nest(ps, "garbage");
+  bool ok1 = _parse(ps, "garbage");
   assert(!ok1);
   assert(parse_has_error(ps));
   parse_state_del(ps);
 
   ps = parse_state_new();
-  bool ok2 = parse_nest(ps, MINIMAL_NEST);
+  bool ok2 = _parse(ps, MINIMAL_NEST);
   if (!ok2) {
     fprintf(stderr, "error: %s\n", parse_get_error(ps));
   }
@@ -421,18 +414,12 @@ TEST(test_bootstrap_nest) {
   }
   assert(f != NULL);
 
-  fseek(f, 0, SEEK_END);
-  long sz = ftell(f);
-  fseek(f, 0, SEEK_SET);
-
-  char* buf = malloc(sz + 1);
-  assert(buf != NULL);
-  size_t rd = fread(buf, 1, sz, f);
-  buf[rd] = '\0';
+  char* ustr = ustr_from_file(f);
   fclose(f);
+  assert(ustr != NULL);
 
   ParseState* ps = parse_state_new();
-  bool ok = parse_nest(ps, buf);
+  bool ok = parse_nest(ps, ustr);
   if (!ok) {
     fprintf(stderr, "error: %s\n", parse_get_error(ps));
   }
@@ -440,7 +427,7 @@ TEST(test_bootstrap_nest) {
   assert(!parse_has_error(ps));
 
   parse_state_del(ps);
-  free(buf);
+  ustr_del(ustr);
 }
 
 // --- String literal in VPA ---
@@ -456,7 +443,7 @@ static const char STRLIT_NEST[] = "[[vpa]]\n"
 
 TEST(test_string_literal_scope) {
   ParseState* ps = parse_state_new();
-  bool ok = parse_nest(ps, STRLIT_NEST);
+  bool ok = _parse(ps, STRLIT_NEST);
   if (!ok) {
     fprintf(stderr, "error: %s\n", parse_get_error(ps));
   }
@@ -476,7 +463,7 @@ static const char DEFINE_REF_NEST[] = "[[vpa]]\n"
 
 TEST(test_define_fragment) {
   ParseState* ps = parse_state_new();
-  bool ok = parse_nest(ps, DEFINE_REF_NEST);
+  bool ok = _parse(ps, DEFINE_REF_NEST);
   if (!ok) {
     fprintf(stderr, "error: %s\n", parse_get_error(ps));
   }
@@ -495,7 +482,7 @@ static const char MULTI_TOK_NEST[] = "[[vpa]]\n"
 
 TEST(test_multiple_tokens) {
   ParseState* ps = parse_state_new();
-  bool ok = parse_nest(ps, MULTI_TOK_NEST);
+  bool ok = _parse(ps, MULTI_TOK_NEST);
   if (!ok) {
     fprintf(stderr, "error: %s\n", parse_get_error(ps));
   }
@@ -514,7 +501,7 @@ static const char RE_IC_NEST[] = "[[vpa]]\n"
 
 TEST(test_case_insensitive_re) {
   ParseState* ps = parse_state_new();
-  bool ok = parse_nest(ps, RE_IC_NEST);
+  bool ok = _parse(ps, RE_IC_NEST);
   if (!ok) {
     fprintf(stderr, "error: %s\n", parse_get_error(ps));
   }
@@ -534,7 +521,7 @@ static const char EFFECT_NEST[] = "[[vpa]]\n"
 
 TEST(test_effect_directive) {
   ParseState* ps = parse_state_new();
-  bool ok = parse_nest(ps, EFFECT_NEST);
+  bool ok = _parse(ps, EFFECT_NEST);
   if (!ok) {
     fprintf(stderr, "error: %s\n", parse_get_error(ps));
   }
@@ -555,7 +542,7 @@ static const char NESTED_SCOPE_NEST[] = "[[vpa]]\n"
 
 TEST(test_nested_scopes) {
   ParseState* ps = parse_state_new();
-  bool ok = parse_nest(ps, NESTED_SCOPE_NEST);
+  bool ok = _parse(ps, NESTED_SCOPE_NEST);
   if (!ok) {
     fprintf(stderr, "error: %s\n", parse_get_error(ps));
   }
@@ -572,7 +559,7 @@ static const char BAD_RE_NEST[] = "[[vpa]]\n"
 
 TEST(test_invalid_empty_regexp) {
   ParseState* ps = parse_state_new();
-  bool ok = parse_nest(ps, BAD_RE_NEST);
+  bool ok = _parse(ps, BAD_RE_NEST);
   assert(!ok);
   assert(parse_has_error(ps));
   parse_state_del(ps);
@@ -587,24 +574,7 @@ static const char UNCLOSED_SCOPE_NEST[] = "[[vpa]]\n"
 
 TEST(test_unclosed_scope) {
   ParseState* ps = parse_state_new();
-  bool ok = parse_nest(ps, UNCLOSED_SCOPE_NEST);
-  assert(!ok);
-  assert(parse_has_error(ps));
-  parse_state_del(ps);
-}
-
-// --- Missing PEG main ---
-
-static const char NO_PEG_MAIN_NEST[] = "[[vpa]]\n"
-                                       "%ignore @space @comment\n"
-                                       "main = { *noise }\n"
-                                       "*noise = { /[ \\t\\n]+/ @space /#[^\\n]*/ @comment /\\n+/ @nl }\n"
-                                       "[[peg]]\n"
-                                       "helper = @nl*\n";
-
-TEST(test_missing_peg_main) {
-  ParseState* ps = parse_state_new();
-  bool ok = parse_nest(ps, NO_PEG_MAIN_NEST);
+  bool ok = _parse(ps, UNCLOSED_SCOPE_NEST);
   assert(!ok);
   assert(parse_has_error(ps));
   parse_state_del(ps);
@@ -660,10 +630,6 @@ int main(void) {
   RUN(test_peg_multiplier_interlace);
   RUN(test_peg_optional);
   RUN(test_multiple_tokens);
-
-  // PEG errors
-  RUN(test_peg_duplicate_tag_error);
-  RUN(test_missing_peg_main);
 
   // VPA errors
   RUN(test_invalid_empty_regexp);

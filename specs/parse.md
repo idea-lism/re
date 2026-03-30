@@ -32,7 +32,8 @@ The overall handling with this syntax:
 
 Resulting interface:
 
-- `bool parse_nest(const char* src, HeaderWriter* header_writer, IrWriter* ir_writer)`
+- `bool parse_nest(const char* ustr_src, HeaderWriter* header_writer, IrWriter* ir_writer)`
+  - `ustr_src` must be a ustr
 
 For reference, file `specs/bootstrap.nest` contains the full syntax definition in its own syntax.
 

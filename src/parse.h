@@ -106,6 +106,11 @@ typedef struct {
 } StrSpan;
 
 typedef struct {
+  char* name; // fragment name (e.g. "ID")
+  ReIr re;    // regex IR for the fragment
+} ReFragment;
+
+typedef struct {
   const char* src;
   int32_t src_len;
 
@@ -113,8 +118,9 @@ typedef struct {
   TokenChunk* read_chunk; // chunk being parsed (cursor target)
   int32_t tpos;
 
-  ReIr* re_irs;       // darray
-  StrSpan* str_spans; // darray (StrSpan*)
+  ReIr* re_irs;           // darray
+  StrSpan* str_spans;     // darray (StrSpan*)
+  ReFragment* re_frags;   // darray
 
   VpaRule* vpa_rules;     // darray
   KeywordEntry* keywords; // darray

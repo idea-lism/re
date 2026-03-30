@@ -68,8 +68,9 @@ TEST(test_has_lex_main) { _assert_func("lex_main"); }
 TEST(test_has_lex_vpa) { _assert_func("lex_vpa"); }
 TEST(test_has_lex_re) { _assert_func("lex_re"); }
 TEST(test_has_lex_charclass) { _assert_func("lex_charclass"); }
-TEST(test_has_lex_dquote_str) { _assert_func("lex_dquote_str"); }
-TEST(test_has_lex_squote_str) { _assert_func("lex_squote_str"); }
+TEST(test_has_lex_re_str) { _assert_func("lex_re_str"); }
+TEST(test_has_lex_re_ref) { _assert_func("lex_re_ref"); }
+TEST(test_has_lex_keyword_str) { _assert_func("lex_keyword_str"); }
 TEST(test_has_lex_peg) { _assert_func("lex_peg"); }
 
 TEST(test_no_extra_defines) {
@@ -79,7 +80,7 @@ TEST(test_no_extra_defines) {
     count++;
     p++;
   }
-  assert(count == 7);
+  assert(count == 8);
 }
 
 // --- IR structure tests ---
@@ -114,8 +115,9 @@ int main(void) {
   RUN(test_has_lex_vpa);
   RUN(test_has_lex_re);
   RUN(test_has_lex_charclass);
-  RUN(test_has_lex_dquote_str);
-  RUN(test_has_lex_squote_str);
+  RUN(test_has_lex_re_str);
+  RUN(test_has_lex_re_ref);
+  RUN(test_has_lex_keyword_str);
   RUN(test_has_lex_peg);
   RUN(test_no_extra_defines);
   RUN(test_omits_target_triple);

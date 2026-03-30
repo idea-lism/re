@@ -35,9 +35,9 @@ vpa = /\s*\[\[vpa\]\]\n/ .begin {
   /\.unparse/ @hook_unparse
   id @vpa_id
   /[A-Z]\w*/ @re_frag_id
-  /\*\{id}/ @macro_id
-  /\.\{id}/ @user_hook_id
-  /\@\{id}/ @tok_id
+  /\*\{ID}/ @macro_id
+  /\.\{ID}/ @user_hook_id
+  /\@\{ID}/ @tok_id
   ops
   /{/ @scope_begin
   /}/ @scope_end
@@ -50,8 +50,8 @@ peg = /\s*\[\[peg\]\]\n/ .begin {
   /[a-z_]\w*/ @peg_id
   # note: emit_id always attaches to previous regexp unit
   #       so the @tok_id token starts and ends with `id`, excluding the `@`
-  /\@\{id}/ @peg_tok_id
-  /: *\{id}/ @tag_id
+  /\@\{ID}/ @peg_tok_id
+  /: *\{ID}/ @tag_id
   /[/ @branches_begin
   /]/ @branches_end
   *peg_ops

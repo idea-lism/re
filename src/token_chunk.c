@@ -23,6 +23,9 @@ TokenTree* tc_tree_new(const char* ustr) {
 }
 
 void tc_tree_del(TokenTree* tree) {
+  if (!tree) {
+    return;
+  }
   size_t chunk_count = darray_size(tree->table);
   for (size_t i = 0; i < chunk_count; i++) {
     darray_del(tree->table[i].tokens);
@@ -63,6 +66,8 @@ TokenChunk* tc_push(TokenTree* tree) {
   int32_t parent_idx = tree->current - tree->table;
   TokenChunk new_chunk = {.scope_id = 0, .parent_id = parent_idx, .tokens = darray_new(sizeof(Token), 0)};
   darray_push(tree->table, new_chunk);
+  // darray_push may reallocate — update root and current
+  tree->root = &tree->table[0];
   tree->current = &tree->table[darray_size(tree->table) - 1];
   return tree->current;
 }

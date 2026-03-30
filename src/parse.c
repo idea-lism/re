@@ -325,6 +325,7 @@ static void _parse_re_unit(ReParseCtx* rctx, ReIr* ir) {
 
   case TOK_RE_REF: {
     _re_next(rctx);
+    re_ir_emit(ir, RE_IR_FRAG_REF, t->cp_start, t->cp_size);
     break;
   }
 
@@ -500,12 +501,18 @@ static void _lex_scope(LexCtx* ctx, ScopeId scope_id) {
     LexResult r = cfg.lex_fn(state, cp);
 
     if (r.action == LEX_ACTION_NOMATCH) {
+      // Rewind: the NOMATCH character belongs to the next token/scope
+      ustr_iter_init(&ctx->it, ctx->ps->src, cp_cp_idx);
+
       if (last_action == TOK_END || last_action == TOK_UNPARSE_END) {
         tc_pop(ctx->tree);
         return;
       } else if (last_action == TOK_IGNORE) {
-        break;
-      } else if (last_action <= SCOPE_COUNT) {
+        // skip ignored content, continue lexing in same scope
+      } else if (last_action == 0) {
+        // unrecognized character — skip it
+        _next_cp(ctx);
+      } else if (last_action > 0 && last_action < SCOPE_COUNT) {
         if (last_action == SCOPE_KEYWORD_STR || last_action == SCOPE_RE_STR) {
           ctx->last_quote_cp = tok_cp_start;
         }
@@ -515,15 +522,51 @@ static void _lex_scope(LexCtx* ctx, ScopeId scope_id) {
           _handle_str_scope(ctx, SCOPE_RE_STR, tok_cp_start, TOK_STR_SPAN_BASE);
         } else if (last_action == SCOPE_KEYWORD_STR) {
           _handle_str_scope(ctx, SCOPE_KEYWORD_STR, tok_cp_start, TOK_STR_SPAN_BASE);
+        } else if (last_action == SCOPE_RE_REF) {
+          // Peek: only enter RE_REF if next char is uppercase (valid fragment name start)
+          int32_t peek_idx = ctx->it.cp_idx;
+          UstrIter peek_it = {0};
+          ustr_iter_init(&peek_it, ctx->ps->src, peek_idx);
+          int32_t peek_cp = (peek_idx < ctx->cp_count) ? ustr_iter_next(&peek_it) : -1;
+          if (peek_cp >= 'A' && peek_cp <= 'Z') {
+            int32_t child_idx = (int32_t)darray_size(ctx->tree->table);
+            _lex_scope(ctx, SCOPE_RE_REF);
+            TokenChunk* child = &ctx->tree->table[child_idx];
+            if (darray_size(child->tokens) > 0 && child->tokens[0].tok_id == TOK_RE_REF) {
+              tc_add(ctx->tree->current,
+                     (Token){.tok_id = TOK_RE_REF,
+                             .cp_start = child->tokens[0].cp_start,
+                             .cp_size = child->tokens[0].cp_size,
+                             .chunk_id = child_idx});
+            }
+          } else {
+            // Not a fragment ref — treat \{ as plain escape for '{'
+            tc_add(ctx->tree->current,
+                   (Token){.tok_id = TOK_CHAR, .cp_start = tok_cp_start, .cp_size = cp_cp_idx - tok_cp_start});
+          }
+        } else if (last_action == SCOPE_CHARCLASS) {
+          // Add charclass begin marker, then inline child scope tokens
+          tc_add(ctx->tree->current,
+                 (Token){.tok_id = TOK_CHARCLASS_BEGIN, .cp_start = tok_cp_start, .cp_size = cp_cp_idx - tok_cp_start});
+          int32_t child_idx = (int32_t)darray_size(ctx->tree->table);
+          _lex_scope(ctx, SCOPE_CHARCLASS);
+          TokenChunk* child = &ctx->tree->table[child_idx];
+          for (int32_t ci = 0; ci < (int32_t)darray_size(child->tokens); ci++) {
+            tc_add(ctx->tree->current, child->tokens[ci]);
+          }
         } else {
           _lex_scope(ctx, last_action);
+          // VPA scope exits when it sees [[peg]], enter PEG scope for remaining content
+          if (last_action == SCOPE_VPA && ctx->it.cp_idx < ctx->cp_count) {
+            _lex_scope(ctx, SCOPE_PEG);
+          }
         }
       } else {
         tc_add(ctx->tree->current,
                (Token){.tok_id = last_action, .cp_start = tok_cp_start, .cp_size = cp_cp_idx - tok_cp_start});
       }
 
-      if (cp == LEX_CP_EOF) {
+      if (cp_cp_idx >= ctx->cp_count) {
         tc_pop(ctx->tree);
         return;
       }
@@ -625,6 +668,12 @@ static bool _parse_vpa_regexp(ParseState* ps, VpaRule* rule) {
   unit.re = ps->re_irs[ir_idx];
   ps->re_irs[ir_idx] = NULL;
 
+  if (!unit.re || darray_size(unit.re) == 0) {
+    _error_at(ps, t, "empty regexp");
+    re_ir_free(unit.re);
+    return false;
+  }
+
   unit.binary_mode = false;
   {
     UstrIter fit = {0};
@@ -684,6 +733,36 @@ static bool _parse_vpa_state_ref(ParseState* ps, VpaRule* rule) {
   return true;
 }
 
+static bool _parse_vpa_frag_ref(ParseState* ps, VpaRule* rule) {
+  Token* t = _peek(ps);
+  if (!t || t->tok_id != TOK_RE_FRAG_ID) {
+    return false;
+  }
+  _next(ps);
+  char* frag_name = _tok_strdup(ps, t);
+  VpaUnit unit = {.kind = VPA_REGEXP};
+
+  // Look up fragment
+  bool found = false;
+  for (int32_t i = 0; i < (int32_t)darray_size(ps->re_frags); i++) {
+    if (strcmp(ps->re_frags[i].name, frag_name) == 0) {
+      unit.re = re_ir_clone(ps->re_frags[i].re);
+      found = true;
+      break;
+    }
+  }
+  if (!found) {
+    _error_at(ps, t, "undefined fragment '%s'", frag_name);
+    free(frag_name);
+    return false;
+  }
+  free(frag_name);
+
+  _parse_unit_followups(ps, &unit, rule);
+  _add_vpa_unit(rule, unit);
+  return true;
+}
+
 static bool _parse_vpa_macro_ref(ParseState* ps, VpaRule* rule) {
   Token* t = _peek(ps);
   if (!t || t->tok_id != TOK_MACRO_ID) {
@@ -714,8 +793,9 @@ static bool _parse_vpa_nl(ParseState* ps) {
 }
 
 static bool _parse_vpa_rule_body(ParseState* ps, VpaRule* rule) {
-  if (_parse_vpa_regexp(ps, rule) || _parse_vpa_re_str(ps, rule) || _parse_vpa_state_ref(ps, rule) ||
-      _parse_vpa_ref(ps, rule) || _parse_vpa_macro_ref(ps, rule) || _parse_vpa_pipe(ps) || _parse_vpa_nl(ps)) {
+  if (_parse_vpa_regexp(ps, rule) || _parse_vpa_re_str(ps, rule) || _parse_vpa_frag_ref(ps, rule) ||
+      _parse_vpa_state_ref(ps, rule) || _parse_vpa_ref(ps, rule) || _parse_vpa_macro_ref(ps, rule) ||
+      _parse_vpa_pipe(ps) || _parse_vpa_nl(ps)) {
     return true;
   }
   _error_at(ps, _peek(ps), "unexpected token in rule body");
@@ -908,6 +988,36 @@ static bool _parse_effect_decl(ParseState* ps) {
   return true;
 }
 
+static bool _parse_define_decl(ParseState* ps) {
+  if (!_at(ps, TOK_DIRECTIVES_DEFINE)) {
+    return false;
+  }
+  Token* def_tok = _next(ps);
+
+  Token* name_tok = _next(ps);
+  if (!name_tok || name_tok->tok_id != TOK_RE_FRAG_ID) {
+    _error_at(ps, def_tok, "expected fragment name after %%define");
+    return false;
+  }
+
+  Token* re_tok = _next(ps);
+  if (!re_tok || re_tok->tok_id < TOK_RE_AST_BASE ||
+      re_tok->tok_id >= TOK_RE_AST_BASE + (int32_t)darray_size(ps->re_irs)) {
+    _error_at(ps, name_tok, "expected regex after fragment name in %%define");
+    return false;
+  }
+
+  int32_t ir_idx = re_tok->tok_id - TOK_RE_AST_BASE;
+  ReFragment frag = {.name = _tok_strdup(ps, name_tok), .re = ps->re_irs[ir_idx]};
+  ps->re_irs[ir_idx] = NULL;
+
+  if (!ps->re_frags) {
+    ps->re_frags = darray_new(sizeof(ReFragment), 0);
+  }
+  darray_push(ps->re_frags, frag);
+  return true;
+}
+
 static bool _parse_vpa_section(ParseState* ps) {
   _skip_nl(ps);
   while (!_at_end(ps)) {
@@ -923,7 +1033,7 @@ static bool _parse_vpa_section(ParseState* ps) {
       break;
     }
     if (_parse_keyword_decl(ps) || _parse_ignore_decl(ps) || _parse_state_decl(ps) || _parse_effect_decl(ps) ||
-        _parse_macro_rule(ps) || _parse_vpa_rule(ps)) {
+        _parse_define_decl(ps) || _parse_macro_rule(ps) || _parse_vpa_rule(ps)) {
       if (parse_has_error(ps)) {
         return false;
       }
@@ -1132,6 +1242,7 @@ static void _free_peg_unit(PegUnit* unit) {
 static void _free_state(ParseState* ps) {
   tc_tree_del(ps->tree);
   ps->tree = NULL;
+  ps->src = NULL;
   ps->read_chunk = NULL;
   for (int32_t i = 0; i < (int32_t)darray_size(ps->vpa_rules); i++) {
     free(ps->vpa_rules[i].name);
@@ -1152,6 +1263,11 @@ static void _free_state(ParseState* ps) {
   }
   darray_del(ps->re_irs);
   darray_del(ps->str_spans);
+  for (int32_t i = 0; i < (int32_t)darray_size(ps->re_frags); i++) {
+    free(ps->re_frags[i].name);
+    re_ir_free(ps->re_frags[i].re);
+  }
+  darray_del(ps->re_frags);
   for (int32_t i = 0; i < (int32_t)darray_size(ps->keywords); i++) {
     free(ps->keywords[i].group);
   }
@@ -1188,19 +1304,24 @@ const char* parse_get_error(ParseState* ps) {
   if (!ps) {
     return NULL;
   }
-  return ps->error[0] ? ps->error : NULL;
+  return ps->error;
 }
 
 // --- Public API ---
 
 bool parse_nest(ParseState* ps, const char* src) {
+  if (!src) {
+    parse_error(ps, "empty or null input");
+    return false;
+  }
+
   ps->src = src;
   ps->src_len = ustr_size(src);
 
   ps->tree = tc_tree_new(src);
 
   UstrIter it = {0};
-  ustr_iter_init(&it, src, ps->src_len);
+  ustr_iter_init(&it, src, 0);
   LexCtx lex_ctx = {
       .ps = ps,
       .tree = ps->tree,
@@ -1210,16 +1331,99 @@ bool parse_nest(ParseState* ps, const char* src) {
 
   _lex_scope(&lex_ctx, SCOPE_MAIN);
 
-  ps->read_chunk = ps->tree->root;
+  // Find VPA and PEG scope chunks
+  int32_t vpa_idx = -1, peg_idx = -1;
+  int32_t table_size = (int32_t)darray_size(ps->tree->table);
+  for (int32_t i = 0; i < table_size; i++) {
+    if (ps->tree->table[i].scope_id == SCOPE_VPA && vpa_idx == -1) {
+      vpa_idx = i;
+    } else if (ps->tree->table[i].scope_id == SCOPE_PEG && peg_idx == -1) {
+      peg_idx = i;
+    }
+  }
+
+  if (vpa_idx < 0) {
+    parse_error(ps, "missing [[vpa]] section");
+    return false;
+  }
+  if (peg_idx < 0) {
+    parse_error(ps, "missing [[peg]] section");
+    return false;
+  }
+
+  ps->read_chunk = &ps->tree->table[vpa_idx];
   ps->tpos = 0;
+
+  // Pre-pass: collect %define fragments before parsing rules
+  {
+    int32_t saved_pos = ps->tpos;
+    while (!_at_end(ps)) {
+      if (_at(ps, TOK_DIRECTIVES_DEFINE)) {
+        if (!_parse_define_decl(ps)) {
+          return false;
+        }
+      } else {
+        _next(ps);
+      }
+    }
+    ps->tpos = saved_pos;
+  }
+
+  // Resolve fragment references in all ReIrs
+  for (int32_t ri = 0; ri < (int32_t)darray_size(ps->re_irs); ri++) {
+    ReIr ir = ps->re_irs[ri];
+    if (!ir) {
+      continue;
+    }
+    ReIr resolved = re_ir_new();
+    for (int32_t oi = 0; oi < (int32_t)darray_size(ir); oi++) {
+      if (ir[oi].kind == RE_IR_FRAG_REF) {
+        char* frag_name = _cp_strdup(ps->src, ir[oi].start, ir[oi].end);
+        bool found = false;
+        for (int32_t fi = 0; fi < (int32_t)darray_size(ps->re_frags); fi++) {
+          if (strcmp(ps->re_frags[fi].name, frag_name) == 0) {
+            ReIr frag_ir = ps->re_frags[fi].re;
+            for (int32_t fj = 0; fj < (int32_t)darray_size(frag_ir); fj++) {
+              darray_push(resolved, frag_ir[fj]);
+            }
+            found = true;
+            break;
+          }
+        }
+        if (!found) {
+          parse_error(ps, "undefined fragment '\\{%s}'", frag_name);
+          free(frag_name);
+          re_ir_free(resolved);
+          return false;
+        }
+        free(frag_name);
+      } else {
+        darray_push(resolved, ir[oi]);
+      }
+    }
+    re_ir_free(ir);
+    ps->re_irs[ri] = resolved;
+  }
+
   if (!_parse_vpa_section(ps)) {
     return false;
   }
+  ps->read_chunk = &ps->tree->table[peg_idx];
+  ps->tpos = 0;
   if (!_parse_peg_section(ps)) {
     return false;
   }
   if (!_at_end(ps)) {
     _error_at(ps, _peek(ps), "unexpected token after end of input");
+    return false;
+  }
+
+  if (!ps->vpa_rules || darray_size(ps->vpa_rules) == 0) {
+    parse_error(ps, "no [[vpa]] rules found");
+    return false;
+  }
+  if (!ps->peg_rules || darray_size(ps->peg_rules) == 0) {
+    parse_error(ps, "no [[peg]] rules found");
     return false;
   }
 
