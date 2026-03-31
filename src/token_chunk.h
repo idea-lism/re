@@ -11,8 +11,9 @@ typedef struct Token {
 
 typedef struct TokenChunk {
   int32_t scope_id;
-  int32_t parent_id;
-  Token* tokens; // darray fat pointer
+  int32_t parent_id; // parent chunk_id, can be used "pop"
+  void* value;       // parser associate a value to it
+  Token* tokens;     // darray fat pointer
 } TokenChunk;
 
 typedef struct TokenTree {

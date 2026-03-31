@@ -1,7 +1,4 @@
-// Build-time tool: generates DFA lexers for the .nest syntax.
-// Mimics the structure of specs/bootstrap.nest with hand-written _lex_xxx calls.
-// Produces a single LLVM IR module with one function per scope.
-
+// reference: parse_gen.md
 #include "irwriter.h"
 #include "parse.h"
 #include "re.h"
@@ -435,9 +432,9 @@ static void _lex_gen_func(Lex* l, IrWriter* w, bool debug_mode) {
 
 // *noise: /#[^\n]*/ @comment, /[ \t]+/ @space, /\n+/ @nl
 static void _build_noise(Lex* l) {
-  _lex_add(l, "#[^\\n]*", __LINE__, 15, ACTION_IGNORE);  // @comment
-  _lex_add(l, "[ \\t]+", __LINE__, 15, ACTION_IGNORE);    // @space
-  _lex_add(l, "\\n+", __LINE__, 15, TOK_NL);              // @nl
+  _lex_add(l, "#[^\\n]*", __LINE__, 15, ACTION_IGNORE); // @comment
+  _lex_add(l, "[ \\t]+", __LINE__, 15, ACTION_IGNORE);  // @space
+  _lex_add(l, "\\n+", __LINE__, 15, TOK_NL);            // @nl
 }
 
 // *chars: /\\\{\h+\}/ @codepoint, /\\[bfnrtv]/ @c_escape, /\\./ @plain_escape, /./ @char
@@ -463,9 +460,8 @@ static void _build_vpa_commons(Lex* l) {
 
   // re = /(b|i|ib|bi)?\// @re_tag .begin
   _lex_add(l, "(b|i|ib|bi)?/", __LINE__, 15, ACTION_RE_TAG_BEGIN);
-  // str = /["']/ .set_quote .begin
-  _lex_add(l, "\"", __LINE__, 15, ACTION_SET_QUOTE_BEGIN);
-  _lex_add(l, "'", __LINE__, 15, ACTION_SET_QUOTE_BEGIN);
+  // re_str = /["']/ .set_quote .begin
+  _lex_add(l, "[\"']", __LINE__, 15, ACTION_SET_QUOTE_BEGIN);
 }
 
 // *directive_keywords: "%ignore" "%effect" "%define" "=" "|"
@@ -538,13 +534,12 @@ static Lex* _build_scope_scope(void) {
   return l;
 }
 
-// lit_scope = "@{" .begin { str "}" .end *noise }
+// lit_scope = "@{" .begin { re_str "}" .end *noise }
 static Lex* _build_lit_scope_scope(void) {
   Lex* l = _lex_new("lex_lit_scope", "nest", "");
 
-  // str = /["']/ .set_quote .begin
-  _lex_add(l, "\"", __LINE__, 15, ACTION_SET_QUOTE_BEGIN);
-  _lex_add(l, "'", __LINE__, 15, ACTION_SET_QUOTE_BEGIN);
+  // re_str = /["']/ .set_quote .begin
+  _lex_add(l, "[\"']", __LINE__, 15, ACTION_SET_QUOTE_BEGIN);
   // "}" .end
   _lex_add(l, "\\}", __LINE__, 15, ACTION_END);
   // *noise
@@ -608,7 +603,7 @@ static Lex* _build_peg_scope(void) {
   // *peg_commons
   _lex_add(l, "[a-z_][a-zA-Z0-9_]*", __LINE__, 15, TOK_PEG_ID);
   _lex_add(l, "@[a-z_][a-zA-Z0-9_]*", __LINE__, 15, TOK_PEG_TOK_ID);
-  // str = /["']/ .set_quote .begin
+  // peg_str = /["']/ .set_quote .begin
   _lex_add(l, "[\"']", __LINE__, 15, ACTION_SET_QUOTE_BEGIN);
   _build_peg_ops(l);
   // branches = "[" .begin
@@ -648,9 +643,19 @@ static Lex* _build_peg_tag_scope(void) {
   return l;
 }
 
-// str = /["']/ .set_quote .begin { /["']/ .str_check_end *chars }
-static Lex* _build_str_scope(void) {
-  Lex* l = _lex_new("lex_str", "nest", "");
+// re_str = /["']/ .set_quote .begin { /["']/ .str_check_end *chars }
+static Lex* _build_re_str_scope(void) {
+  Lex* l = _lex_new("lex_re_str", "nest", "");
+
+  _lex_add(l, "[\"']", __LINE__, 15, ACTION_STR_CHECK_END);
+  _build_chars(l);
+
+  return l;
+}
+
+// peg_str = /["']/ .set_quote .begin { /["']/ .str_check_end *chars }
+static Lex* _build_peg_str_scope(void) {
+  Lex* l = _lex_new("lex_peg_str", "nest", "");
 
   _lex_add(l, "[\"']", __LINE__, 15, ACTION_STR_CHECK_END);
   _build_chars(l);
@@ -673,12 +678,12 @@ int main(int argc, char** argv) {
   IrWriter* w = irwriter_new(f, NULL);
   irwriter_start(w, "nest", ".");
 
-  // order must match ScopeId enum: MAIN, VPA, SCOPE, LIT_SCOPE, PEG, BRANCHES, PEG_TAG, RE, RE_REF, CHARCLASS, STR
+  // order must match ScopeId enum: MAIN, VPA, SCOPE, LIT_SCOPE, PEG, BRANCHES, PEG_TAG, RE, RE_REF, CHARCLASS, RE_STR,
+  // PEG_STR
   Lex* scopes[] = {
-      _build_main_scope(),      _build_vpa_scope(),       _build_scope_scope(),
-      _build_lit_scope_scope(), _build_peg_scope(),       _build_branches_scope(),
-      _build_peg_tag_scope(),   _build_re_scope(),        _build_re_ref_scope(),
-      _build_charclass_scope(), _build_str_scope(),
+      _build_main_scope(),   _build_vpa_scope(),       _build_scope_scope(),   _build_lit_scope_scope(),
+      _build_peg_scope(),    _build_branches_scope(),  _build_peg_tag_scope(), _build_re_scope(),
+      _build_re_ref_scope(), _build_charclass_scope(), _build_re_str_scope(),  _build_peg_str_scope(),
   };
   int32_t nscopes = sizeof(scopes) / sizeof(scopes[0]);
 

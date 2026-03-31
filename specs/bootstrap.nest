@@ -53,7 +53,7 @@ vpa = /\s*\[\[vpa\]\]\n/ .begin {
   /\.\{ID}/ @user_hook_id
   /\@\{ID}/ @tok_id
   re
-  str
+  re_str
 }
 
 scope = "{" .begin {
@@ -63,7 +63,7 @@ scope = "{" .begin {
 }
 
 lit_scope = "@{" .begin {
-  str
+  re_str
   "}" .end
   *noise
 }
@@ -87,7 +87,7 @@ peg = /\s*\[\[peg\]\]\n/ .begin {
 *peg_commons = {
   /[a-z_]\w*/ @peg_id
   /\@\{ID}/ @peg_tok_id
-  str
+  peg_str
   *peg_ops
   *noise
 }
@@ -147,8 +147,13 @@ charclass = /\[\^?/ @charclass_begin .begin {
   /./ @char
 }
 
-# rewrite to include at least one boundary token, so parser can parse empty str
-str = /["']/ .set_quote .begin {
+re_str = /["']/ .set_quote .begin {
+  /["']/ .str_check_end # may emit char or terminate matching
+  *chars
+}
+
+// same as re_str, but the parsing process is different so we create different scope
+peg_str = /["']/ .set_quote .begin {
   /["']/ .str_check_end # may emit char or terminate matching
   *chars
 }
@@ -186,7 +191,7 @@ define_frag = "%define" @re_frag_id re
 
 vpa_rule = @vpa_id "=" [
   re
-  str
+  peg_str
   @re_frag_id
 ] action* scope?
 
@@ -207,11 +212,11 @@ action = [
 # surroundings already trimmed by lexer
 scope = @nl* scope_line+<@nl> @nl*
 
-lit_scope = @nl* str+<@nl> @nl*
+lit_scope = @nl* re_str+<@nl> @nl*
 
 scope_line = [
   re action*
-  str action*
+  re_str action*
   @re_frag_id action*
   @vpa_id action*
   @module_id
@@ -259,7 +264,7 @@ charclass_char = [
   @char
 ]
 
-str = str_char*
+re_str = str_char*
 
 str_char = [
   @char
@@ -279,9 +284,11 @@ seq = peg_unit+
 peg_unit = [
   @peg_id multiplier?
   @peg_tok_id multiplier?
-  str multiplier?
+  peg_str multiplier?
   branches
 ]
+
+peg_str = str_char*
 
 multiplier = [
   "?"

@@ -41,22 +41,8 @@ By feeding the chars one by one, the lexer construct another bitmap to index the
 So the data structures are:
 
 ```c
-struct TokenTree {
-  const char* src; // = ustr
-  uint64_t newline_map[]; // bitmap = (ustr_size(ustr) + 63) / 64
-  TokenChunk* root; // pointer to the root chunk
-  TokenChunk* current; // pointer to the current chunk
-  TokenChunk table[]; // indexed by chunk_id
-}
-
-struct TokenChunk { // matches a scope
-  int32_t scope_id;
-  int32_t parent_id; // -1 for root chunk
-  Token tokens[];
-}
-
 // 16 bytes a token
-struct Token {
+typedef struct {
   int32_t tok_id; // or scope_id (is scope id when < SCOPE_COUNT), parse analysis should give a universal numbering to all of them
   // with cp_start (absolute offset relative to input string):
   // - we can locate the line & column with newline_map
@@ -64,7 +50,28 @@ struct Token {
   int32_t cp_start;
   int32_t cp_size;
   int32_t chunk_id; // when tok_id is a scope, it can be expanded to a TokenChunk
-}
+} Token;
+
+// add typedef so we don't mess darray fat pointers with normal pointers
+typedef Token* Tokens;
+
+typedef struct { // matches a scope
+  int32_t scope_id;
+  int32_t parent_id; // parent chunk_id, -1 for root chunk
+  void* value;       // parser associate a value to it after parse, `struct ScopeXxx`
+  Tokens tokens;
+} TokenChunk;
+
+// darray
+typedef TokenChunk* TokenChunks;
+
+typedef struct {
+  const char* src; // = ustr
+  uint64_t newline_map[]; // bitmap = (ustr_size(ustr) + 63) / 64
+  TokenChunk* root; // pointer to the root chunk
+  TokenChunk* current; // pointer to the current chunk
+  TokenChunks table; // indexed by chunk_id
+} TokenTree;
 ```
 
 And helper functions:

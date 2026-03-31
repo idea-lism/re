@@ -68,12 +68,11 @@ typedef enum {
 typedef enum {
   ACTION_START = SCOPE_COUNT,
 
-  // single
-  ACTION_IGNORE, // .ignore
-  ACTION_BEGIN, // .begin
-  ACTION_END, // .end
-  ACTION_UNPARSE, // .unparse
-  ACTION_FAIL, // .fail
+  ACTION_IGNORE,
+  ACTION_BEGIN,
+  ACTION_END,
+  ACTION_UNPARSE,
+  ACTION_FAIL,
   ACTION_STR_CHECK_END, // .str_check_end
 
   // composite: since lexer api only accepts single action_id, multiple actions must be combined

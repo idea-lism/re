@@ -26,7 +26,7 @@ The overall handling with this syntax:
 
 1. Create `src/header_writer.c` to make C header generating a bit easier.
 2. implement a manual pushdown automata in `src/parse.c`, utilizing lexers defined by `src/parse_gen.c`.
-3. implement recursive descendent parsers in `src/parse.c` to:
+3. implement recursive descend parsers in `src/parse.c` to:
    - recursive descend parse the whole source
    - utilize [token chunk](src/token_chunk.h)
 
@@ -41,7 +41,7 @@ For reference, file `specs/bootstrap.nest` contains the full syntax definition i
 
 Visibly pushdown (nested word) definition, served as lexer. Impl in `src/vpa.c`
 
-Act as an low-level ambiguity resolver, we prefer first-declared action when possible.
+Act as a low-level ambiguity resolver, we prefer first-declared action when possible.
 
 The lexer will remain simple, just to solve the state and the macro problem.
 
@@ -67,7 +67,7 @@ to lex the syntax we mainly have these patterns defined:
 - `\n[[peg]]` ends the vpa parser, go to the peg parser
 - comment, space, nl
 
-First implementation of the syntax, must be a manual recursive descendant parser.
+First implementation of the syntax, must be a manual recursive descend parser.
 
 the semantic:
 - `main` is the entrance
@@ -81,10 +81,11 @@ the semantic:
   - lookahead-1 for greedy match: when there can be no action to emit, the last min action wins (see also the MIN-RULE in aut.md)
 - `\@{id}` means put tok_id into the token streaming token tree (see below)
 - when a vpa scope ends, if there is a `peg_rule` with the same id as the `vpa_rule`, invoke peg parsing on the scope tokens.
-  - non-peg vpa's -- don't create sub-stream (see below example)
-  - non-vpa peg's -- just a peg sub-rule, no special handling
+  - both peg & vpa -- create sub-stream and invoke parsing on sub-stream
+  - non-peg vpa -- don't create sub-stream (see example below)
+  - non-vpa peg -- just a peg sub-rule, no special handling
 
-in addtion, the `re` scope has interpolation syntax:
+in addition, the `re` scope has interpolation syntax:
 - `\{UPPER_CASED_ID}` references a predefined regexp fragment
 
 token stream at runtime looks like this if `scope1` is used in peg but `scope2` is not used in peg.
@@ -105,8 +106,8 @@ tokens include:
 - `=` assign
 - `[` branches_begin
 - `]` branches_end
-- `<` join_begin
-- `>` join_end
+- `<` join/interlace begin
+- `>` join/interlace end
 - `?` maybe, greedy
 - `+` plus, PEG possesive matching
 - `*` star, PEG possesive matching
@@ -123,10 +124,11 @@ PEG semantics:
 
 ### Nested word lexing
 
-in the bootstraping `parse.c`, define `_lex_scope(scope_id)` function, which finds corresponding scope config and lex.
+in the bootstraping `parse.c`, define `bool _lex_scope(ctx, scope_id)` function, which finds corresponding scope config and lex.
 
 ```c
-typedef ScopeConfigs ScopeConfig*;
+// darray of ScopeConfig
+typedef ScopeConfig* ScopeConfigs;
 
 struct ScopeConfig {
   int32_t scope_id;
@@ -137,16 +139,16 @@ struct ScopeConfig {
 
 In the loop of `_lex_scope`
 - when met `end_token`, return and pop chunk head.
-- when a token_id is a scope_id (tok_id <= SCOPE_MAX), call `_lex_scope(tok_id)`.
+- when a token_id is a scope_id (tok_id <= SCOPE_MAX), call `_lex_scope(ctx, tok_id)`.
 
 Error handling:
 - when sub lexer meets error, set error to lexing state
 - parent lexer checks lexing state after calling sub lexer, if error, just return
 
-The [token stream tree](src/tok_chunk.c) is organized the same way as `TokenTree` in [VPA generated code](specs/vpa.md).
+The [token stream tree](src/token_chunk.c) is organized the same way as `TokenTree` in [VPA generated code](specs/vpa.md).
 
 The parsing also follows this nested structure:
-- When parsing matches to a rule that is not a scope, call it as in normal recursive descendant parsers
+- When parsing matches to a rule that is not a scope, call it as in normal recursive descend parsers
 - When parsing matches to a rule that maps to a scope, read a scope_id token and the chunk it points to, and call rule with the new child chunk
 
 In summary, only `ACTION_XXX` require special handling in the lexing loop:
@@ -167,10 +169,12 @@ ACTION_RE_TAG_BEGIN, // @re_tag .begin
 ACTION_CHARCLASS_BEGIN_BEGIN, // @charclass_begin .begin
 ```
 
+For detailed scope/action/lit/tok see [parse_gen](parse_gen.md).
+
 So after we called a generated `lex_xxx()` and met a mismatch / eof, we check the `last_action_id`:
 
 ```c
-bool _lex_scope() {
+bool _lex_scope(ctx, scope_id) {
   ScopeConfig cfg = configs[scope_id];
   while (take a codepoint from input) {
     action_id = feed codepoint to current lexer
@@ -188,6 +192,16 @@ bool _lex_scope() {
               goto done
             case ACTION_UNPARSE:
               revert one token
+            case ACTION_SET_QUOTE_BEGIN:
+              ctx->last_quote_cp = decode_cp;
+              goto ACTION_BEGIN;
+            case ACTION_STR_CHECK_END:
+              if (decode_cp == ctx->last_quote_cp) {
+                goto ACTION_END;
+              } else {
+                emit char token
+              }
+            case ...
           }
         } else if (last_action_id < LIT_COUNT) {
           emit literal token in token chunk
@@ -209,13 +223,13 @@ done:
 }
 ```
 
-Scope parsing example:
+Scope parsing example, especially for peg_str & re_str:
 
 ```c
 typedef void* DStr; // darray of chars
 
-bool _parse_str(const char* src, TokenChunk* chunk) {
-  DStr buf = darray_new(sizeof(char), 0);
+bool _parse_peg_str(const char* src, TokenChunk* chunk) {
+  DStr buf = darray_new(sizeof(int32_t), 0);
   char* b = (char*)buf;
   int32_t n = (int32_t)darray_size(chunk->tokens);
   for (int32_t i = 0; i < n; i++) {
@@ -229,7 +243,7 @@ bool _parse_str(const char* src, TokenChunk* chunk) {
       case TOK_CODEPOINT: {
         UstrIter it = {0};
         ustr_iter_init(&it, src, t->cp_start + 1);
-        int cp = re_hex_to_codepoint(src + it.byte_off, t->cp_size - 1);
+        int32_t cp = re_hex_to_codepoint(src + it.byte_off, t->cp_size - 1);
         char slice[4] = {0};
         ustr_encode_utf8(slice, cp);
         _push_buf(buf, slice);
@@ -238,7 +252,6 @@ bool _parse_str(const char* src, TokenChunk* chunk) {
       case TOK_C_ESCAPE: {
         UstrIter it = {0};
         ustr_iter_init(&it, src, t->cp_start + 1);
-        char* b = (char*)buf;
         darray_push(b, re_c_escape(src[it.byte_off]));
         break;
       }
@@ -250,7 +263,58 @@ bool _parse_str(const char* src, TokenChunk* chunk) {
     }
   }
   darray_push(b, '\0');
-  // write buf to context
+
+  chunk->value = buf;
+
+  // there's no way to generate an invalid string, it just returns true
+  return true;
+}
+
+typedef struct {
+  DStr* tok_name;
+  ReIr re_ir;
+} ReStrUnit;
+
+bool _parse_re_str(const char* src, TokenChunk* chunk) {
+  ReStrUnit unit = {0};
+  // save some work by invoking existing parser
+  _parse_peg_str(src, chunk);
+  unit.tok_name = chunk->value;
+
+  ReIr re = re_ir_new();
+  int32_t n = (int32_t)darray_size(chunk->tokens);
+  for (int32_t i = 0; i < n; i++) {
+    Token* t = &chunk->tokens[i];
+    switch (t->tok_id) {
+      case TOK_CHAR: {
+        int32_t cp = ustr_cp_at(src, t->cp_start);
+        re = re_ir_emit_ch(re, cp);
+        break;
+      }
+      case TOK_CODEPOINT: {
+        UstrIter it = {0};
+        ustr_iter_init(&it, src, t->cp_start + 1);
+        int32_t cp = re_hex_to_codepoint(src + it.byte_off, t->cp_size - 1);
+        re = re_ir_emit_ch(re, cp);
+        break;
+      }
+      case TOK_C_ESCAPE: {
+        UstrIter it = {0};
+        ustr_iter_init(&it, src, t->cp_start + 1);
+        char c = re_c_escape(src[it.byte_off]);
+        re = re_ir_emit_ch(re, c);
+        break;
+      }
+      case TOK_PLAIN_ESCAPE: {
+        int32_t cp = ustr_cp_at(src, t->cp_start + 1);
+        re = re_ir_emit_ch(re, cp);
+        break;
+      }
+    }
+  }
+
+  chunk->value = malloc(sizeof(ReStrUnit));
+  *(ReStrUnit*)chunk->value = unit;
   return true;
 }
 ```
@@ -269,7 +333,6 @@ Note that `%define` can reference each other, must avoid infinite recursions.
 - Recursive descend parsers work on scope level
   - the input token stream buffer is a scoped chunk
   - no expand sub-scope parsing -- sub-scopes are just a token_id match
-- String literals are stored with source offset + length, no extra allocations for them
 - Regexps are converted to [IR](re_ir.md)
 - When a scope is complete (at `.end` hook), it should invoke recursive descend parsing on the token stream chunk
 

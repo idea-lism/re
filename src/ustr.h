@@ -34,7 +34,9 @@ typedef struct {
 void ustr_iter_init(UstrIter* it, const char* s, int32_t cp_offset);
 int32_t ustr_iter_next(UstrIter* it);
 
-typedef struct { char buf[4]; } UstrCpBuf;
+typedef struct {
+  char buf[4];
+} UstrCpBuf;
 UstrCpBuf ustr_slice_cp(const char* s, int32_t cp_offset);
 int32_t ustr_cp_at(const char* s, int32_t cp_offset);
 int32_t ustr_encode_utf8(char* out, int32_t cp);

@@ -20,7 +20,10 @@ ReIr re_ir_clone(ReIr src) {
 
 ReIr re_ir_new(void) { return darray_new(sizeof(ReIrOp), 0); }
 
-ReIr re_ir_emit(ReIr ir, ReIrKind kind, int32_t start, int32_t end) { darray_push(ir, ((ReIrOp){kind, start, end})); return ir; }
+ReIr re_ir_emit(ReIr ir, ReIrKind kind, int32_t start, int32_t end) {
+  darray_push(ir, ((ReIrOp){kind, start, end}));
+  return ir;
+}
 
 ReIr re_ir_emit_ch(ReIr ir, int32_t cp) { return re_ir_emit(ir, RE_IR_APPEND_CH, cp, cp); }
 
