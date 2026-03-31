@@ -20,9 +20,9 @@ ReIr re_ir_clone(ReIr src) {
 
 ReIr re_ir_new(void) { return darray_new(sizeof(ReIrOp), 0); }
 
-void re_ir_emit(ReIr* ir, ReIrKind kind, int32_t start, int32_t end) { darray_push(*ir, ((ReIrOp){kind, start, end})); }
+ReIr re_ir_emit(ReIr ir, ReIrKind kind, int32_t start, int32_t end) { darray_push(ir, ((ReIrOp){kind, start, end})); return ir; }
 
-void re_ir_emit_ch(ReIr* ir, int32_t cp) { re_ir_emit(ir, RE_IR_APPEND_CH, cp, cp); }
+ReIr re_ir_emit_ch(ReIr ir, int32_t cp) { return re_ir_emit(ir, RE_IR_APPEND_CH, cp, cp); }
 
 ReIr re_ir_build_literal(const char* src, int32_t cp_off, int32_t cp_len) {
   ReIr ir = re_ir_new();
@@ -35,7 +35,7 @@ ReIr re_ir_build_literal(const char* src, int32_t cp_off, int32_t cp_len) {
     if (cp < 0) {
       break;
     }
-    re_ir_emit_ch(&ir, cp);
+    ir = re_ir_emit_ch(ir, cp);
   }
   ustr_del(s);
   return ir;

@@ -13,7 +13,6 @@ typedef enum {
   VPA_REGEXP,
   VPA_REF,
   VPA_SCOPE,
-  VPA_STATE,
 } VpaUnitKind;
 
 typedef struct VpaUnit VpaUnit;
@@ -23,7 +22,6 @@ struct VpaUnit {
   ReIr re;           // a flattened regexp representation
   bool binary_mode;  // true if tagged with 'b' mode
   char* name;        // tok_id name (without @) or ref name (owned)
-  char* state_name;  // VPA_STATE: state matcher name (without $) (owned)
   int32_t hook;      // TOK_HOOK_BEGIN, _END, _FAIL, _UNPARSE, or 0
   char* user_hook;   // (owned, may be NULL)
   VpaUnit* children; // darray
@@ -45,11 +43,6 @@ typedef struct {
   const char* src; // source pointer for accessing literal text
 } KeywordEntry;
 
-// State declaration
-typedef struct {
-  char* name; // (owned)
-} StateDecl;
-
 // Effect declaration
 typedef struct {
   char* hook_name;  // (owned)
@@ -65,7 +58,6 @@ typedef struct {
 typedef struct {
   VpaRule* rules;         // darray
   KeywordEntry* keywords; // darray
-  StateDecl* states;      // darray
   EffectDecl* effects;    // darray
   PegRule* peg_rules;     // darray
   const char* src;

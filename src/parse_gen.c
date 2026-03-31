@@ -542,19 +542,18 @@ static Lex* _build_re_ref_scope(void) {
 static Lex* _build_re_str_scope(void) {
   Lex* l = _lex_new("lex_re_str", "nest", "");
 
-  _lex_add(l, "\"", __LINE__, 15, TOK_END);
-  _lex_add(l, "'", __LINE__, 15, TOK_END);
+  _lex_add(l, "[\"']", __LINE__, 15, TOK_END);
   _build_chars(l);
 
   return l;
 }
 
-// keyword_str scope: bootstrap.nest lines 108-111
+// keyword_str scope: bootstrap.nest lines 102-105
 static Lex* _build_keyword_str_scope(void) {
   Lex* l = _lex_new("lex_keyword_str", "nest", "");
 
   _lex_add(l, "[\"']", __LINE__, 15, TOK_END);
-  _lex_add(l, "(\\\\.|[^\"\\\\])+", __LINE__, 15, TOK_KEYWORD_STR);
+  _build_chars(l);
 
   return l;
 }

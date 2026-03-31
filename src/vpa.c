@@ -112,15 +112,6 @@ static ScopeInfo* _find_scope(ScopeInfo* scopes, const char* name) {
   return NULL;
 }
 
-static bool _find_state(StateDecl* states, const char* name) {
-  for (int32_t i = 0; i < (int32_t)darray_size(states); i++) {
-    if (strcmp(states[i].name, name) == 0) {
-      return true;
-    }
-  }
-  return false;
-}
-
 static bool _hook_has_effect(EffectDecl* effects, const char* hook_name, int32_t effect) {
   if (!hook_name || !hook_name[0]) {
     return false;
@@ -210,7 +201,7 @@ static int32_t _resolve_action(ActionRegistry* reg, ScopeInfo* scope, VpaUnit* u
 }
 
 static DfaPattern* _resolve_body(ScopeInfo* scope, VpaUnit* body, VpaRule* rules, ScopeInfo* scopes,
-                                 ActionRegistry* reg, StateDecl* states, EffectDecl* effects, PegRule* peg_rules) {
+                                 ActionRegistry* reg, EffectDecl* effects, PegRule* peg_rules) {
   DfaPattern* patterns = darray_new(sizeof(DfaPattern), 0);
 
   for (int32_t i = 0; i < (int32_t)darray_size(body); i++) {
@@ -223,11 +214,6 @@ static DfaPattern* _resolve_body(ScopeInfo* scope, VpaUnit* body, VpaRule* rules
       }
       darray_push(patterns,
                   ((DfaPattern){.kind = VPA_REGEXP, .ir = u->re, .state_name = NULL, .action_id = action_id}));
-
-    } else if (u->kind == VPA_STATE && u->state_name && _find_state(states, u->state_name)) {
-      int32_t action_id = _resolve_action(reg, scope, u, NULL, effects, peg_rules, true);
-      darray_push(patterns,
-                  ((DfaPattern){.kind = VPA_STATE, .ir = NULL, .state_name = u->state_name, .action_id = action_id}));
 
     } else if (u->kind == VPA_REF && u->name) {
       VpaRule* ref_rule = NULL;
@@ -258,10 +244,6 @@ static DfaPattern* _resolve_body(ScopeInfo* scope, VpaUnit* body, VpaRule* rules
             continue;
           }
           darray_push(patterns, ((DfaPattern){.kind = VPA_REGEXP, .ir = ru->re, .state_name = NULL, .action_id = aid}));
-        } else if (ru->kind == VPA_STATE && ru->state_name && _find_state(states, ru->state_name)) {
-          int32_t aid = _resolve_action(reg, scope, ru, ref_rule->name, effects, peg_rules, true);
-          darray_push(patterns,
-                      ((DfaPattern){.kind = VPA_STATE, .ir = NULL, .state_name = ru->state_name, .action_id = aid}));
         }
       }
 
@@ -322,83 +304,6 @@ static void _gen_scope_dfa(ScopeInfo* scope, DfaPattern* patterns, IrWriter* w) 
 
   re_del(re);
   aut_del(aut);
-}
-
-static void _gen_scope_state_matcher(ScopeInfo* scope, DfaPattern* patterns, IrWriter* w) {
-  int32_t n_states = 0;
-  for (int32_t i = 0; i < (int32_t)darray_size(patterns); i++) {
-    if (patterns[i].kind == VPA_STATE && patterns[i].state_name && patterns[i].state_name[0]) {
-      n_states++;
-    }
-  }
-
-  int32_t fn_len = snprintf(NULL, 0, "state_%s", scope->name) + 1;
-  char func_name[fn_len];
-  snprintf(func_name, (size_t)fn_len, "state_%s", scope->name);
-
-  if (n_states == 0) {
-    irwriter_rawf(w, "define {i32, i32} @%s(ptr %%src, i32 %%cp_off, ptr %%tt) {\n", func_name);
-    irwriter_raw(w, "entry:\n");
-    irwriter_raw(w, "  ret {i32, i32} zeroinitializer\n");
-    irwriter_raw(w, "}\n\n");
-    return;
-  }
-
-  irwriter_rawf(w, "define {i32, i32} @%s(ptr %%src, i32 %%cp_off, ptr %%tt) {\n", func_name);
-  irwriter_raw(w, "entry:\n");
-  irwriter_raw(w, "  %best_act = alloca i32\n");
-  irwriter_raw(w, "  %best_off = alloca i32\n");
-  irwriter_raw(w, "  store i32 0, ptr %best_act\n");
-  irwriter_raw(w, "  store i32 0, ptr %best_off\n");
-
-  for (int32_t i = 0; i < (int32_t)darray_size(patterns); i++) {
-    DfaPattern* p = &patterns[i];
-    if (p->kind != VPA_STATE || !p->state_name || !p->state_name[0]) {
-      continue;
-    }
-
-    int32_t sym_len = snprintf(NULL, 0, "match_%s", p->state_name) + 1;
-    char symbol[sym_len];
-    _make_state_match_symbol(p->state_name, symbol, sizeof(symbol));
-
-    irwriter_rawf(w, "  %%len_%d = call i32 @%s(ptr %%src, i32 %%cp_off, ptr %%tt)\n", i, symbol);
-    irwriter_rawf(w, "  %%ok_%d = icmp sgt i32 %%len_%d, 0\n", i, i);
-    irwriter_rawf(w, "  br i1 %%ok_%d, label %%Lstate_hit_%d, label %%Lstate_next_%d\n", i, i, i);
-    irwriter_rawf(w, "Lstate_hit_%d:\n", i);
-    irwriter_rawf(w, "  %%end_%d = add i32 %%cp_off, %%len_%d\n", i, i);
-    irwriter_rawf(w, "  %%cur_act_%d = load i32, ptr %%best_act\n", i);
-    irwriter_rawf(w, "  %%cur_off_%d = load i32, ptr %%best_off\n", i);
-    irwriter_rawf(w, "  %%off_gt_%d = icmp sgt i32 %%end_%d, %%cur_off_%d\n", i, i, i);
-    irwriter_rawf(w, "  %%off_eq_%d = icmp eq i32 %%end_%d, %%cur_off_%d\n", i, i, i);
-    irwriter_rawf(w, "  %%act_lt_%d = icmp slt i32 %d, %%cur_act_%d\n", i, p->action_id, i);
-    irwriter_rawf(w, "  %%cur_missing_%d = icmp eq i32 %%cur_act_%d, 0\n", i, i);
-    irwriter_rawf(w, "  %%tie_%d = and i1 %%off_eq_%d, %%act_lt_%d\n", i, i, i);
-    irwriter_rawf(w, "  %%replace_a_%d = or i1 %%cur_missing_%d, %%off_gt_%d\n", i, i, i);
-    irwriter_rawf(w, "  %%replace_%d = or i1 %%replace_a_%d, %%tie_%d\n", i, i, i);
-    irwriter_rawf(w, "  br i1 %%replace_%d, label %%Lstate_store_%d, label %%Lstate_next_%d\n", i, i, i);
-    irwriter_rawf(w, "Lstate_store_%d:\n", i);
-    irwriter_rawf(w, "  store i32 %d, ptr %%best_act\n", p->action_id);
-    irwriter_rawf(w, "  store i32 %%end_%d, ptr %%best_off\n", i);
-    irwriter_rawf(w, "  br label %%Lstate_next_%d\n", i);
-    irwriter_rawf(w, "Lstate_next_%d:\n", i);
-  }
-
-  irwriter_raw(w, "  %ret0 = insertvalue {i32, i32} poison, i32 0, 0\n");
-  irwriter_raw(w, "  %final_act = load i32, ptr %best_act\n");
-  irwriter_raw(w, "  %ret1 = insertvalue {i32, i32} %ret0, i32 %final_act, 0\n");
-  irwriter_raw(w, "  %final_off = load i32, ptr %best_off\n");
-  irwriter_raw(w, "  %ret2 = insertvalue {i32, i32} %ret1, i32 %final_off, 1\n");
-  irwriter_raw(w, "  ret {i32, i32} %ret2\n");
-  irwriter_raw(w, "}\n\n");
-}
-
-static void _gen_state_matcher_ir_decls(StateDecl* states, IrWriter* w) {
-  for (int32_t i = 0; i < (int32_t)darray_size(states); i++) {
-    int32_t sym_len = snprintf(NULL, 0, "match_%s", states[i].name) + 1;
-    char symbol[sym_len];
-    _make_state_match_symbol(states[i].name, symbol, sizeof(symbol));
-    irwriter_declare(w, "i32", symbol, "ptr, i32, ptr");
-  }
 }
 
 static void _gen_parse_scope_bridges_ir(ActionRegistry* reg, IrWriter* w) {
@@ -641,18 +546,6 @@ static void _gen_runtime_helpers(HeaderWriter* hw) {
              "  return _vpa_parse_tt->parse_chunk->tokens[col].tok_id == tok_id ? 1 : -1;\n"
              "}\n");
   hw_raw(hw, "#endif\n\n");
-}
-
-static void _gen_state_matcher_header(StateDecl* states, HeaderWriter* hw) {
-  if ((int32_t)darray_size(states) == 0) {
-    return;
-  }
-
-  hw_comment(hw, "State matchers: return matched codepoint length, or 0 for no match");
-  for (int32_t i = 0; i < (int32_t)darray_size(states); i++) {
-    hw_fmt(hw, "int32_t match_%s(void* src, int32_t cp_off, void* tt);\n", states[i].name);
-  }
-  hw_blank(hw);
 }
 
 static void _gen_user_hook_header(ActionRegistry* reg, HeaderWriter* hw) {
@@ -1082,7 +975,6 @@ static ScopeInfo* _collect_scopes(VpaRule* rules) {
 void vpa_gen(VpaGenInput* input, HeaderWriter* hw, IrWriter* w) {
   VpaRule* rules = input->rules;
   KeywordEntry* keywords = input->keywords;
-  StateDecl* states = input->states;
   EffectDecl* effects = input->effects;
   PegRule* peg_rules = input->peg_rules;
 
@@ -1102,20 +994,17 @@ void vpa_gen(VpaGenInput* input, HeaderWriter* hw, IrWriter* w) {
   }
 
   ScopeInfo* scopes = _collect_scopes(rules);
-  _gen_state_matcher_ir_decls(states, w);
 
   _gen_runtime_types(hw);
   _gen_runtime_helpers(hw);
-  _gen_state_matcher_header(states, hw);
   _gen_scope_ids(scopes, hw);
 
   for (int32_t i = 0; i < (int32_t)darray_size(scopes); i++) {
     if (!scopes[i].body) {
       continue;
     }
-    DfaPattern* patterns = _resolve_body(&scopes[i], scopes[i].body, rules, scopes, &reg, states, effects, peg_rules);
+    DfaPattern* patterns = _resolve_body(&scopes[i], scopes[i].body, rules, scopes, &reg, effects, peg_rules);
     _gen_scope_dfa(&scopes[i], patterns, w);
-    _gen_scope_state_matcher(&scopes[i], patterns, w);
     darray_del(patterns);
   }
 

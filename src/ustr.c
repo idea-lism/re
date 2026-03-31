@@ -245,19 +245,19 @@ void ustr_iter_init(UstrIter* it, const char* s, int32_t char_offset) {
   it->cp_idx = char_offset;
 }
 
-static inline int32_t _decode_cp(const uint8_t* p, int32_t* adv) {
-  uint8_t b = p[0];
+static inline int32_t _decode_cp(const char* p, int32_t* out_decoded_bytes) {
+  uint8_t b = (uint8_t)p[0];
   if (b < 0x80) {
-    *adv = 1;
+    *out_decoded_bytes = 1;
     return b;
   } else if (b < 0xE0) {
-    *adv = 2;
+    *out_decoded_bytes = 2;
     return ((int32_t)(b & 0x1F) << 6) | (p[1] & 0x3F);
   } else if (b < 0xF0) {
-    *adv = 3;
+    *out_decoded_bytes = 3;
     return ((int32_t)(b & 0x0F) << 12) | ((int32_t)(p[1] & 0x3F) << 6) | (p[2] & 0x3F);
   } else {
-    *adv = 4;
+    *out_decoded_bytes = 4;
     return ((int32_t)(b & 0x07) << 18) | ((int32_t)(p[1] & 0x3F) << 12) | ((int32_t)(p[2] & 0x3F) << 6) | (p[3] & 0x3F);
   }
 }
@@ -268,7 +268,7 @@ int32_t ustr_iter_next(UstrIter* it) {
   }
 
   int32_t adv;
-  int32_t cp = _decode_cp((const uint8_t*)it->s + it->byte_off, &adv);
+  int32_t cp = _decode_cp(it->s + it->byte_off, &adv);
   it->byte_off += adv;
   it->cp_idx++;
 
@@ -281,7 +281,85 @@ int32_t ustr_iter_next(UstrIter* it) {
   return cp;
 }
 
-int32_t ustr_decode_cp(const uint8_t* p, int32_t* adv) { return _decode_cp(p, adv); }
+int32_t ustr_cp_at(const char* s, int32_t cp_offset) {
+  int32_t size = ustr_bytesize(s);
+  const uint8_t* marks = _marks_ptr_const(s, size);
+  int32_t byte_off;
+  if (cp_offset == 0) {
+    byte_off = 0;
+  } else {
+    byte_off = _marks_nth_cp(marks, size, cp_offset);
+    if (byte_off < 0) {
+      int32_t cplen = _marks_popcount(marks, size);
+      assert(cp_offset == cplen);
+      return -1;
+    }
+  }
+  int32_t adv;
+  return _decode_cp(s + byte_off, &adv);
+}
+
+UstrCpBuf ustr_slice_cp(const char* s, int32_t char_offset) {
+  UstrCpBuf r = {.buf = {0}};
+
+  int32_t size = ustr_bytesize(s);
+  const uint8_t* marks = _marks_ptr_const(s, size);
+  int32_t byte_off;
+  if (char_offset == 0) {
+    byte_off = 0;
+  } else {
+    byte_off = _marks_nth_cp(marks, size, char_offset);
+    if (byte_off < 0) {
+      int32_t cplen = _marks_popcount(marks, size);
+      assert(char_offset == cplen);
+      byte_off = size;
+    }
+  }
+
+  const uint8_t* p = (const uint8_t*)s + byte_off;
+  uint8_t b = (uint8_t)p[0];
+  int buf_sz = 0;
+  if (b < 0x80) {
+    r.buf[buf_sz++] = (char)b;
+  } else if (b < 0xE0) {
+    r.buf[buf_sz++] = (char)b;
+    r.buf[buf_sz++] = (char)p[1];
+  } else if (b < 0xF0) {
+    r.buf[buf_sz++] = (char)b;
+    r.buf[buf_sz++] = (char)p[1];
+    r.buf[buf_sz++] = (char)p[2];
+  } else {
+    r.buf[buf_sz++] = (char)b;
+    r.buf[buf_sz++] = (char)p[1];
+    r.buf[buf_sz++] = (char)p[2];
+    r.buf[buf_sz++] = (char)p[3];
+  }
+
+  r.buf[buf_sz] = '\0';
+  return r;
+}
+
+int32_t ustr_encode_utf8(char* out, int32_t cp) {
+  if (cp < 0x80) {
+    out[0] = (char)cp;
+    return 1;
+  } else if (cp < 0x800) {
+    out[0] = (char)(0xC0 | (cp >> 6));
+    out[1] = (char)(0x80 | (cp & 0x3F));
+    return 2;
+  } else if (cp < 0x10000) {
+    out[0] = (char)(0xE0 | (cp >> 12));
+    out[1] = (char)(0x80 | ((cp >> 6) & 0x3F));
+    out[2] = (char)(0x80 | (cp & 0x3F));
+    return 3;
+  } else {
+    out[0] = (char)(0xF0 | (cp >> 18));
+    out[1] = (char)(0x80 | ((cp >> 12) & 0x3F));
+    out[2] = (char)(0x80 | ((cp >> 6) & 0x3F));
+    out[3] = (char)(0x80 | (cp & 0x3F));
+    return 4;
+  }
+}
 
 char* ustr_slice(const char* s, int32_t start, int32_t end) {
   int32_t size = ustr_bytesize(s);

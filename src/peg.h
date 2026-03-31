@@ -9,6 +9,7 @@
 typedef enum {
   PEG_ID,
   PEG_TOK,
+  PEG_KEYWORD_TOK,
   PEG_BRANCHES,
   PEG_SEQ,
 } PegUnitKind;

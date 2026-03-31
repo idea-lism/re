@@ -32,20 +32,6 @@ The matcher for `s` first matches `/regex1/`, then the braced union. Since `a` i
 
 Note that the automata's `action_id` is not token_id or scope id. each action_id should map to a sequence of actions like invoke hook / emit token, so we will have a label array, and utilize the computed-goto extension (there should be equivalent one in LLVM IR) to invoke the series of actions quickly.
 
-### Parallel state matching
-
-When a hook invokes state matching like the following example:
-
-```c
-main = {
-  /regexp1/ # action 1
-  $st
-  /regexp2/ # action 2
-}
-```
-
-The generated code will have automata as the union of `/regexp1/` and `/regexp2/`, a user-defined state matcher is also invoked to check if input matches `$st` state. If state matcher matches but `action 1` is produced, `action 1` wins. If state matcher matches and only `action 2` is produced, state matcher wins.
-
 ### From byte stream to codepoint stream to token stream
 
 The input is byte stream, with [ustr](ustr.md), we already have a bitmap to index the starting positions of codepoints.
@@ -96,8 +82,4 @@ TokenChunk* tc_pop(TokenTree* tree);  // returns new current
 
 generated header defines interface to interact with the LLVM-IR defined parser.
 
-- user must define `%state` and `.` hooks for lexing
-- each state is an opaque type `void*`, user have custom interpretation of it (string? number? string array? etc).
-  - in hooks user can update states.
-  - if states are used in matching, user also need to implement `match_{state_id}(const char*, userdata)` so lexer can do dynamic matching by current state. for example:
-    - `foo = $foo` means the matching of the `foo` rule is totally customed by `match_foo(current_src_pointer, userdata)`
+- user must define `.` hooks for lexing

@@ -149,6 +149,17 @@ The parsing also follows this nested structure:
 - When parsing matches to a rule that is not a scope, call it as in normal recursive descendant parsers
 - When parsing matches to a rule that maps to a scope, read a scope_id token and the chunk it points to, and call rule with the new child chunk
 
+In summary, special tokens that require handling are:
+
+```
+SCOPE_XXX   // push scope
+TOK_END     // pop scope
+TOK_IGNORE
+TOK_UNPARSE_END   // go back one token, then pop scope
+TOK_SET_QUOTE     // set the quote sate
+TOK_STR_CHECK_END // check the quote state, emit char or pop scope
+```
+
 ### Regexp parsing and VPA parse result
 
 Before parsing, call `_collect_re_frags()` to iterate the token tree for the `%define` rules to build the fragment table.

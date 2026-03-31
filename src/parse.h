@@ -15,7 +15,12 @@ typedef enum {
   SCOPE_COUNT
 } ScopeId;
 
-// Token IDs for the .nest syntax (used as action_id in automata).
+// special tokens that will invoke special handling:
+// - TOK_END
+// - TOK_IGNORE
+// - TOK_UNPARSE_END
+// - TOK_SET_QUOTE
+// - TOK_STR_CHECK_END
 enum {
   TOK_START = SCOPE_COUNT, // first token ID (after scopes)
 
@@ -40,7 +45,6 @@ enum {
   TOK_MACRO_ID,
   TOK_USER_HOOK_ID,
   TOK_TOK_ID,
-  TOK_STATE_ID,
   TOK_OPS_EQ,
   TOK_OPS_PIPE,
   TOK_SCOPE_BEGIN,
@@ -75,8 +79,9 @@ enum {
   TOK_CHARCLASS_BEGIN,
   TOK_RANGE_SEP,
 
-  // keyword_str scope
-  TOK_KEYWORD_STR,
+  // re_str, keyword_str scope
+  TOK_SET_QUOTE,
+  TOK_STR_CHECK_END,
 
   // peg scope
   TOK_PEG_ID,
@@ -125,12 +130,13 @@ typedef struct {
   VpaRule* vpa_rules;     // darray
   KeywordEntry* keywords; // darray
   IgnoreSet ignores;
-  StateDecl* states;   // darray
   EffectDecl* effects; // darray
   PegRule* peg_rules;  // darray
 
   char error[512];
 } ParseState;
+
+typedef void* DStr; // string builder (darray of char)
 
 // --- Public API ---
 

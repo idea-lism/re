@@ -39,9 +39,9 @@ ReIr re_ir_clone(ReIr src);
 
 ReIr re_ir_new(void);
 
-void re_ir_emit(ReIr* ir, ReIrKind kind, int32_t start, int32_t end);
+ReIr re_ir_emit(ReIr ir, ReIrKind kind, int32_t start, int32_t end);
 
-void re_ir_emit_ch(ReIr* ir, int32_t cp);
+ReIr re_ir_emit_ch(ReIr ir, int32_t cp);
 
 ReIr re_ir_build_literal(const char* src, int32_t cp_off, int32_t cp_len);
 

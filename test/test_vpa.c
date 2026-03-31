@@ -219,17 +219,6 @@ TEST(test_vpa_unit_scope) {
   free(u.name);
 }
 
-TEST(test_vpa_unit_state) {
-  VpaUnit u = {0};
-  u.kind = VPA_STATE;
-  u.state_name = strdup("foo");
-
-  assert(u.kind == VPA_STATE);
-  assert(strcmp(u.state_name, "foo") == 0);
-
-  free(u.state_name);
-}
-
 TEST(test_vpa_unit_hooks) {
   VpaUnit u = {0};
   u.kind = VPA_REGEXP;
@@ -309,17 +298,6 @@ TEST(test_keyword_entry) {
   free(kw.group);
 }
 
-// === StateDecl ===
-
-TEST(test_state_decl) {
-  StateDecl sd = {0};
-  sd.name = strdup("indent_level");
-
-  assert(strcmp(sd.name, "indent_level") == 0);
-
-  free(sd.name);
-}
-
 // === EffectDecl ===
 
 TEST(test_effect_decl) {
@@ -366,20 +344,17 @@ TEST(test_vpa_gen_input_empty) {
   VpaGenInput input = {0};
   input.rules = darray_new(sizeof(VpaRule), 0);
   input.keywords = darray_new(sizeof(KeywordEntry), 0);
-  input.states = darray_new(sizeof(StateDecl), 0);
   input.effects = darray_new(sizeof(EffectDecl), 0);
   input.peg_rules = darray_new(sizeof(PegRule), 0);
   input.src = "source";
 
   assert(darray_size(input.rules) == 0);
   assert(darray_size(input.keywords) == 0);
-  assert(darray_size(input.states) == 0);
   assert(darray_size(input.effects) == 0);
   assert(darray_size(input.peg_rules) == 0);
 
   darray_del(input.rules);
   darray_del(input.keywords);
-  darray_del(input.states);
   darray_del(input.effects);
   darray_del(input.peg_rules);
 }
@@ -388,7 +363,6 @@ TEST(test_vpa_gen_input_with_rules) {
   VpaGenInput input = {0};
   input.rules = darray_new(sizeof(VpaRule), 0);
   input.keywords = darray_new(sizeof(KeywordEntry), 0);
-  input.states = darray_new(sizeof(StateDecl), 0);
   input.effects = darray_new(sizeof(EffectDecl), 0);
   input.peg_rules = darray_new(sizeof(PegRule), 0);
   input.src = "test source";
@@ -408,14 +382,9 @@ TEST(test_vpa_gen_input_with_rules) {
 
   darray_push(input.rules, main_rule);
 
-  // add a state
-  StateDecl sd = {.name = strdup("indent")};
-  darray_push(input.states, sd);
-
   assert(darray_size(input.rules) == 1);
   assert(strcmp(input.rules[0].name, "main") == 0);
   assert(darray_size(input.rules[0].units) == 1);
-  assert(darray_size(input.states) == 1);
 
   // cleanup
   re_ir_free(input.rules[0].units[0].re);
@@ -423,8 +392,6 @@ TEST(test_vpa_gen_input_with_rules) {
   darray_del(input.rules[0].units);
   free(input.rules[0].name);
   darray_del(input.rules);
-  free(input.states[0].name);
-  darray_del(input.states);
   darray_del(input.keywords);
   darray_del(input.effects);
   darray_del(input.peg_rules);
@@ -540,67 +507,6 @@ TEST(test_scope_handling) {
   free(rule_a.units[1].name);
   darray_del(rule_a.units);
   free(rule_a.name);
-}
-
-// === Parallel state matching: structure test ===
-
-TEST(test_parallel_state_matching) {
-  // Simulate spec example:
-  //   main = { /regexp1/  $st  /regexp2/ }
-  VpaRule rule = {0};
-  rule.name = strdup("main");
-  rule.units = darray_new(sizeof(VpaUnit), 0);
-  rule.is_scope = true;
-
-  VpaUnit scope = {0};
-  scope.kind = VPA_SCOPE;
-  scope.name = strdup("main_body");
-  scope.children = darray_new(sizeof(VpaUnit), 0);
-
-  // /regexp1/ -> action 1
-  VpaUnit r1 = {0};
-  r1.kind = VPA_REGEXP;
-  r1.re = re_ir_new();
-  re_ir_emit_ch(&r1.re, 'a');
-  r1.name = strdup("action1");
-  darray_push(scope.children, r1);
-
-  // $st
-  VpaUnit st = {0};
-  st.kind = VPA_STATE;
-  st.state_name = strdup("st");
-  darray_push(scope.children, st);
-
-  // /regexp2/ -> action 2
-  VpaUnit r2 = {0};
-  r2.kind = VPA_REGEXP;
-  r2.re = re_ir_new();
-  re_ir_emit_ch(&r2.re, 'b');
-  r2.name = strdup("action2");
-  darray_push(scope.children, r2);
-
-  darray_push(rule.units, scope);
-
-  // verify: 3 children in the scope body
-  assert(darray_size(rule.units) == 1);
-  assert(rule.units[0].kind == VPA_SCOPE);
-  VpaUnit* children = rule.units[0].children;
-  assert(darray_size(children) == 3);
-  assert(children[0].kind == VPA_REGEXP);
-  assert(children[1].kind == VPA_STATE);
-  assert(strcmp(children[1].state_name, "st") == 0);
-  assert(children[2].kind == VPA_REGEXP);
-
-  // cleanup
-  re_ir_free(children[0].re);
-  free(children[0].name);
-  free(children[1].state_name);
-  re_ir_free(children[2].re);
-  free(children[2].name);
-  darray_del(rule.units[0].children);
-  free(rule.units[0].name);
-  darray_del(rule.units);
-  free(rule.name);
 }
 
 // === ReIr for VPA units ===
@@ -741,14 +647,12 @@ int main(void) {
   RUN(test_vpa_unit_regexp);
   RUN(test_vpa_unit_ref);
   RUN(test_vpa_unit_scope);
-  RUN(test_vpa_unit_state);
   RUN(test_vpa_unit_hooks);
 
   RUN(test_vpa_rule_basic);
   RUN(test_vpa_rule_macro);
 
   RUN(test_keyword_entry);
-  RUN(test_state_decl);
   RUN(test_effect_decl);
   RUN(test_ignore_set);
 
@@ -756,7 +660,6 @@ int main(void) {
   RUN(test_vpa_gen_input_with_rules);
 
   RUN(test_scope_handling);
-  RUN(test_parallel_state_matching);
 
   RUN(test_re_ir_for_vpa);
   RUN(test_re_ir_build_literal);

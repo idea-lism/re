@@ -8,7 +8,7 @@
 # pre-define partial regexp for later use
 %define ID /[a-z_]\w*/
 
-%effect .str_check_end = @re_char | .end
+%effect .str_check_end = @char | .end
 
 main = {
   vpa
@@ -101,7 +101,7 @@ re_str = /["']/ .set_quote .begin {
 
 keyword_str = /["']/ .set_quote .begin {
   /["']/ .str_check_end # may emit char or terminate matching
-  /(\\.|[^"\\])+/ @keyword_str # reduced token
+  *chars
 }
 
 # PEG section
@@ -143,6 +143,7 @@ vpa_rule = @vpa_id "=" [
   @re_frag_id followup*
   re_str followup*
   @vpa_id followup*
+  @macro_id
 ]
 
 vpa_macro_rule = @macro_id "=" scope
@@ -210,9 +211,11 @@ charclass_char = [
   @char
 ]
 
-re_str = re_str_char+
+re_str = str_char+
 
-re_str_char = [
+keyword_str = str_char*
+
+str_char = [
   @char
   @codepoint
   @c_escape
@@ -230,7 +233,7 @@ seq = peg_unit+
 peg_unit = [
   @peg_id multiplier?
   @peg_tok_id multiplier?
-  @keyword_str multiplier?
+  keyword_str multiplier?
   branches
 ]
 
