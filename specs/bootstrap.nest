@@ -18,48 +18,53 @@ main = {
 
 *noise = {
   /#[^\n]*/ @comment
-  /[ \t\n]+/ @space
+  /[ \t]+/ @space
   /\n+/ @nl
 }
 
 # if leading regexp matches, push the scope {}
-%keyword directives "%ignore" "%effect" "%keyword" "%define"
-%keyword ops "=" "|"
+%keyword *directives "%ignore" "%effect" "%keyword" "%define"
+%keyword *ops "=" "|"
 vpa = /\s*\[\[vpa\]\]\n/ .begin {
   /\[\[peg\]\]/ .unparse .end
   re
-  directives
+  *directives
   /\.begin/ @hook_begin
   /\.end/ @hook_end
   /\.fail/ @hook_fail
   /\.unparse/ @hook_unparse
-  id @vpa_id
+  ID @vpa_id
   /[A-Z]\w*/ @re_frag_id
   /\*\{ID}/ @macro_id
   /\.\{ID}/ @user_hook_id
   /\@\{ID}/ @tok_id
-  ops
+  *ops
   /{/ @scope_begin
   /}/ @scope_end
-  re_str
+  str
   *noise
 }
 
-%keyword peg_ops "<" ">" "?" "+" "*" "="
+%keyword *peg_ops "<" ">" "?" "+" "*" "="
 peg = /\s*\[\[peg\]\]\n/ .begin {
   /[a-z_]\w*/ @peg_id
   # note: emit_id always attaches to previous regexp unit
   #       so the @tok_id token starts and ends with `id`, excluding the `@`
   /\@\{ID}/ @peg_tok_id
-  /: *\{ID}/ @tag_id
-  /[/ @branches_begin
-  /]/ @branches_end
+  peg_tag
+  /\[/ @branches_begin
+  /\]/ @branches_end
   *peg_ops
-  keyword_str
+  str
   *noise
 }
 
-%keyword re_ops "|" "(" ")" "?" "+" "*"
+peg_tag = /:/ .begin {
+  ID @tag_id
+  // .end
+}
+
+%keyword *re_ops "|" "(" ")" "?" "+" "*"
 
 re = /(b|i|ib|bi)?\// @re_tag .begin {
   /\// .end
@@ -94,12 +99,7 @@ charclass = /\[\^?/ @charclass_begin .begin {
   /./ @char
 }
 
-re_str = /["']/ .set_quote .begin {
-  /["']/ .str_check_end # may emit char or terminate matching
-  *chars
-}
-
-keyword_str = /["']/ .set_quote .begin {
+str = /["']/ .set_quote .begin {
   /["']/ .str_check_end # may emit char or terminate matching
   *chars
 }
@@ -134,24 +134,19 @@ effect = [
   @hook_unparse
 ]
 
-keyword_def = "%keyword" @vpa_id @tok_id+
+keyword_def = "%keyword" @macro_id str+
 
 frag_def = "%define" @re_frag_id re
 
 vpa_rule = @vpa_id "=" [
-  re followup*
-  @re_frag_id followup*
-  re_str followup*
-  @vpa_id followup*
-  @macro_id
-]
+  re
+  str
+  @re_frag_id
+] action* scope?
 
 vpa_macro_rule = @macro_id "=" scope
 
-followup = [
-  re
-  re_str
-  @vpa_id
+action = [
   @tok_id
   @hook_begin
   @hook_end
@@ -163,9 +158,10 @@ followup = [
 scope = @scope_begin @nl* scope_line+<@nl> @nl* @scope_end
 
 scope_line = [
-  re followup*
-  re_str followup*
-  @vpa_id followup*
+  re action*
+  re_str action*
+  @re_frag_id action*
+  @vpa_id action*
   @macro_id
 ]
 
@@ -245,4 +241,9 @@ multiplier = [
 
 interlace = "<" seq ">"
 
-branches = @branches_begin @nl* seq+<@nl> @nl* @branches_end
+branches = @branches_begin @nl* branch_line+<@nl> @nl* @branches_end
+
+branch_line = [
+  seq @tag_id?
+  @tag_id
+]

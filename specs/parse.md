@@ -4,7 +4,7 @@ Parser generator combining visibly pushdown automata (VPA) and parsing expressio
 
 - VPA is a set of minimized DFAs with a scope stack
   - it can emit nested token stream
-  - it can be extended by hook predicates and dynamic state parsing
+  - it can be extended by hook predicates
 - PEG work on the token level, not character level
   - PEGs are separated / nested by the corresponding VPA scope
   - so for each child PEG the rule count is much smaller
@@ -41,14 +41,13 @@ For reference, file `specs/bootstrap.nest` contains the full syntax definition i
 
 Visibly pushdown (nested word) definition, served as lexer. Impl in `src/vpa.c`
 
-Act as an low-level ambiguity resolver, we prefer first-declared state when possible.
+Act as an low-level ambiguity resolver, we prefer first-declared action when possible.
 
 The lexer will remain simple, just to solve the state and the macro problem.
 
 Hooks have the info of current pos, parsed range, can return token id or end / fail.
 
 to lex the syntax we mainly have these patterns defined:
-- `%state` define state
 - `%ignore` define tokens to ignore -- these tokens won't get into the stream
 - `%effect` (for validation-only) define effect of a hook. hooks without `%effect` won't emit token / end lexing loop
 - `%keyword` define keyword token
@@ -57,10 +56,9 @@ to lex the syntax we mainly have these patterns defined:
 - `.unparse` primitive_hook: put back the matched text so the next rule can re-match it
 - `.fail` primitive_hook: fails parsing
 - `[a-z_]\w*` id
-- `\*{id}` macro rule, can be used inside a scope to inline definitions
-- `\.{id}` hook_id
-- `\@{id}` tok_id to emit
-- `\${id}` state_id
+- `\*{ID}` macro rule, can be used inside a scope to inline definitions
+- `\.{ID}` hook_id
+- `\@{ID}` tok_id to emit
 - `(b|i|ib|bi)?\/` ... `/` regexp (must not be empty) -- should handle it with child DFA
 - `["'']` ... `$last_quote` quoted string literal, also generates automata
 - `=` assign
@@ -73,6 +71,7 @@ First implementation of the syntax, must be a manual recursive descendant parser
 
 the semantic:
 - `main` is the entrance
+- `%define` creates re_frag database, when parsing, expand defines
 - `%keyword` is syntax sugar which will be expanded at [post_process](post_process.md)
 - `.on_*` hooks (e.g. `.on_tok_def`, `.on_id`, `.on_assign`) are user-defined semantic hooks referenced via `\.{id}` pattern. They fire during lexing for semantic actions (tracking definitions, resolving names, etc.) but don't affect the token stream unless combined with `%effect`.
 - Visibly pushdown automata
@@ -101,8 +100,8 @@ Define parsing expression grammar
 
 tokens include:
 - `[a-z_]\w*` if after a ":", assign tag id for this branch, else is PEG rule id
-- `\@{id}` token id
-- `: id` tag a branch
+- `\@{ID}` token id
+- `:` ... then `ID`: tag a branch
 - `=` assign
 - `[` branches_begin
 - `]` branches_end

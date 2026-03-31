@@ -59,7 +59,10 @@ foo = a [
 
 `bool pp_validate(ParseState* ps);`:
 - `main` must exist in `[[vpa]]` and `[[peg]]`
-- `re_str` must contain at least 1 char in it
+- a leading `re`/`re_str`/``re_frag_id` must contain at least 1 char in it
+- in a scope, there can only be 1 `re`/`re_str`/``re_frag_id` that is empty
+- warn about not used keyword_str
+- warn about not used `%define`
 - each scope in `[[vpa]]` must have a `.begin` (or user hook that produces the `.begin` effect) and one or more `.end` (or user hook that produces the `end` effect)
 - for a same scope, used token set in `[[peg]]` must be the same as emit token set in `[[vpa]]`
   - for example, 

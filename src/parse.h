@@ -7,11 +7,11 @@ typedef enum {
   SCOPE_MAIN = 0,
   SCOPE_VPA,
   SCOPE_PEG,
+  SCOPE_PEG_TAG,
   SCOPE_RE,
-  SCOPE_RE_STR,
+  SCOPE_STR,
   SCOPE_RE_REF,
   SCOPE_CHARCLASS,
-  SCOPE_KEYWORD_STR,
   SCOPE_COUNT
 } ScopeId;
 
@@ -31,7 +31,6 @@ enum {
 
   // scope: vpa
   TOK_UNPARSE_END, // .unparse .end
-  TOK_DIRECTIVES_STATE,
   TOK_DIRECTIVES_IGNORE,
   TOK_DIRECTIVES_EFFECT,
   TOK_DIRECTIVES_KEYWORD,
@@ -50,7 +49,7 @@ enum {
   TOK_SCOPE_BEGIN,
   TOK_SCOPE_END,
 
-  // shared by re, re_str, charclass, keyword_str
+  // shared by re, str, charclass
   TOK_CODEPOINT,
   TOK_C_ESCAPE,
   TOK_PLAIN_ESCAPE,
@@ -79,7 +78,7 @@ enum {
   TOK_CHARCLASS_BEGIN,
   TOK_RANGE_SEP,
 
-  // re_str, keyword_str scope
+  // str scope
   TOK_SET_QUOTE,
   TOK_STR_CHECK_END,
 
