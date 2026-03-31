@@ -45,15 +45,16 @@ foo = a [
 ### peg: left recursion detect
 
 `bool pp_detect_left_recursions(ParseState* ps)`:
-- walk down peg rules to detect left recursions -- we don't allow it
+- walk down peg rules to detect left recursions -- we don't allow this infinite loop.
+  - when analyzing, be ware of the scope boundary: if there is a scope, we don't expand it. for example str is defined `str = str_char*`, but it always takes a slot in token stream so parsing the scope won't result in infinite loop.
 
 ### vpa & peg: keyword matching & expansion
 
 `bool pp_expand_keywords(ParseState* ps);`:
-- expand the `%keyword` sugar
-- for example, `%keyword ops "=" "|"` expands to regexp rules `/=/ @ops.=` and `/|/ @ops.|`
-  - then in PEG, `"="` is replaced with `@ops.=`, `"|"` with `@ops.|`
-- token names are `{group}.{literal}` — no identifier restrictions at the AST level
+- expand the `.lit` sugar
+- token name is auto-generated as: `@lit.{literal-content}`
+- for example, `"=" .lit` will emit a token `@lit.=`, and the usage of
+  - in this example, `"="` in peg is replaced by `@lit.=`
 
 ### other validations
 
@@ -61,9 +62,8 @@ foo = a [
 - `main` must exist in `[[vpa]]` and `[[peg]]`
 - a leading `re`/`re_str`/``re_frag_id` must contain at least 1 char in it
 - in a scope, there can only be 1 `re`/`re_str`/``re_frag_id` that is empty
-- warn about not used keyword_str
-- warn about not used `%define`
-- each scope in `[[vpa]]` must have a `.begin` (or user hook that produces the `.begin` effect) and one or more `.end` (or user hook that produces the `end` effect)
+  - if the branch is empty, it means a fallback action, the following action must have one of `.end`/`.fail`
+- each scope in `[[vpa]]` except `main` must have a `.begin` (or user hook that produces the `.begin` effect) and one or more `.end` (or user hook that produces the `end` effect)
 - for a same scope, used token set in `[[peg]]` must be the same as emit token set in `[[vpa]]`
   - for example, 
     - with vpa rule `foo = /.../ @a`, `bar = foo @b`, `bar`'s emit token set is `{@a, @b}` (including descendant's)

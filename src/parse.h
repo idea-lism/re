@@ -4,56 +4,87 @@
 #include <stdint.h>
 
 typedef enum {
-  SCOPE_MAIN = 0,
+  SCOPE_START,
+
+  SCOPE_MAIN,
   SCOPE_VPA,
+  SCOPE_SCOPE,
+  SCOPE_LIT_SCOPE,
   SCOPE_PEG,
+  SCOPE_BRANCHES,
   SCOPE_PEG_TAG,
   SCOPE_RE,
-  SCOPE_STR,
   SCOPE_RE_REF,
   SCOPE_CHARCLASS,
+  SCOPE_STR,
+
   SCOPE_COUNT
 } ScopeId;
 
-// special tokens that will invoke special handling:
-// - TOK_END
-// - TOK_IGNORE
-// - TOK_UNPARSE_END
-// - TOK_SET_QUOTE
-// - TOK_STR_CHECK_END
-enum {
-  TOK_START = SCOPE_COUNT, // first token ID (after scopes)
+typedef enum {
+  ACTION_START = SCOPE_COUNT,
+
+  ACTION_IGNORE,
+  ACTION_BEGIN,
+  ACTION_END,
+  ACTION_UNPARSE,
+  ACTION_UNPARSE_END,
+  ACTION_FAIL,
+  ACTION_STR_CHECK_END, // .str_check_end
+
+  // composite: since lexer api only accepts single action_id, multiple actions must be combined
+  ACTION_SET_QUOTE_BEGIN,        // .set_quote .begin
+  ACTION_RE_TAG_BEGIN,           // @re_tag .begin
+  ACTION_CHARCLASS_BEGIN_BEGIN,  // @charclass_begin .begin
+
+  ACTION_COUNT
+} ActionId;
+
+typedef enum {
+  LIT_START = ACTION_COUNT,
+
+  LIT_IGNORE,  // "%ignore"
+  LIT_EFFECT,  // "%effect"
+  LIT_DEFINE,  // "%define"
+  LIT_EQ,      // "="
+  LIT_OR,      // "|"
+  LIT_INTERLACE_BEGIN, // "<"
+  LIT_INTERLACE_END,   // ">"
+  LIT_QUESTION, // "?"
+  LIT_PLUS,     // "+"
+  LIT_STAR,     // "*"
+  LIT_LPAREN,   // "("
+  LIT_RPAREN,   // ")"
+
+  LIT_COUNT
+} LitId;
+
+typedef enum {
+  TOK_START = LIT_COUNT,
 
   // shared tokens
-  TOK_END, // ends any scope
-  TOK_IGNORE,
   TOK_NL,
 
   // scope: vpa
-  TOK_UNPARSE_END, // .unparse .end
-  TOK_DIRECTIVES_IGNORE,
-  TOK_DIRECTIVES_EFFECT,
-  TOK_DIRECTIVES_KEYWORD,
-  TOK_DIRECTIVES_DEFINE,
+  TOK_TOK_ID,
   TOK_HOOK_BEGIN,
   TOK_HOOK_END,
   TOK_HOOK_FAIL,
   TOK_HOOK_UNPARSE,
   TOK_VPA_ID,
-  TOK_RE_FRAG_ID,
-  TOK_MACRO_ID,
+  TOK_MODULE_ID,
   TOK_USER_HOOK_ID,
-  TOK_TOK_ID,
-  TOK_OPS_EQ,
-  TOK_OPS_PIPE,
-  TOK_SCOPE_BEGIN,
-  TOK_SCOPE_END,
+  TOK_STATE_ID,
+  TOK_RE_FRAG_ID,
 
-  // shared by re, str, charclass
+  // shared by re, charclass, str
   TOK_CODEPOINT,
   TOK_C_ESCAPE,
   TOK_PLAIN_ESCAPE,
   TOK_CHAR,
+
+  // str scope
+  TOK_STR_START,
 
   // re scope
   TOK_RE_TAG,
@@ -64,12 +95,6 @@ enum {
   TOK_RE_HEX_CLASS,
   TOK_RE_BOF,
   TOK_RE_EOF,
-  TOK_RE_OPS_ALT,
-  TOK_RE_OPS_LPAREN,
-  TOK_RE_OPS_RPAREN,
-  TOK_RE_OPS_MAYBE,
-  TOK_RE_OPS_PLUS,
-  TOK_RE_OPS_STAR,
 
   // re_ref scope
   TOK_RE_REF,
@@ -78,25 +103,13 @@ enum {
   TOK_CHARCLASS_BEGIN,
   TOK_RANGE_SEP,
 
-  // str scope
-  TOK_SET_QUOTE,
-  TOK_STR_CHECK_END,
-
   // peg scope
   TOK_PEG_ID,
   TOK_PEG_TOK_ID,
   TOK_TAG_ID,
-  TOK_BRANCHES_BEGIN,
-  TOK_BRANCHES_END,
-  TOK_PEG_OPS_LT,
-  TOK_PEG_OPS_GT,
-  TOK_PEG_OPS_QUESTION,
-  TOK_PEG_OPS_PLUS,
-  TOK_PEG_OPS_STAR,
-  TOK_PEG_OPS_ASSIGN,
 
   TOK_COUNT
-};
+} TokenId;
 
 #include "peg.h"
 #include "token_chunk.h"

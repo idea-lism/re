@@ -47,39 +47,89 @@ When a subscope is there, match the first regexp of the subscope, and emit a `SC
 The tokens are defined in [src/parse.h](src/parse.h) as:
 
 ```c
-enum {
-  TOK_START = SCOPE_COUNT, // first token ID (after scopes)
+typedef enum {
+  SCOPE_START,
+
+  SCOPE_MAIN,
+  SCOPE_VPA,
+  SCOPE_SCOPE,
+  SCOPE_LIT_SCOPE,
+  SCOPE_PEG,
+  SCOPE_BRANCHES,
+  SCOPE_PEG_TAG,
+  SCOPE_RE,
+  SCOPE_RE_REF,
+  SCOPE_CHARCLASS,
+  SCOPE_STR,
+
+  SCOPE_COUNT
+} ScopeId;
+
+typedef enum {
+  ACTION_START = SCOPE_COUNT,
+
+  // single
+  ACTION_IGNORE, // .ignore
+  ACTION_BEGIN, // .begin
+  ACTION_END, // .end
+  ACTION_UNPARSE, // .unparse
+  ACTION_FAIL, // .fail
+  ACTION_STR_CHECK_END, // .str_check_end
+
+  // composite: since lexer api only accepts single action_id, multiple actions must be combined
+  ACTION_UNPARSE_END, // .unparse .end
+  ACTION_SET_QUOTE_BEGIN, // .set_quote .begin
+  ACTION_RE_TAG_BEGIN, // @re_tag .begin
+  ACTION_CHARCLASS_BEGIN_BEGIN, // @charclass_begin .begin
+
+  ACTION_COUNT
+} ActionId;
+
+typedef enum {
+  LIT_START = ACTION_COUNT,
+
+  LIT_IGNORE, // "%ignore"
+  LIT_EFFECT, // "%effect"
+  LIT_DEFINE, // "%define"
+  LIT_EQ, // "="
+  LIT_OR, // "|"
+  LIT_INTERLACE_BEGIN, // "<"
+  LIT_INTERLACE_END, // ">"
+  LIT_QUESTION, // "?"
+  LIT_PLUS, // "+"
+  LIT_STAR, // "*"
+  LIT_LPAREN, // "("
+  LIT_RPAREN, // ")"
+
+  LIT_COUNT
+} LitId;
+
+typedef enum {
+  TOK_START = LIT_COUNT, // first token ID (after scopes)
 
   // shared tokens
-  TOK_END,    // ends any scope
-  TOK_IGNORE,
   TOK_NL,
 
   // scope: vpa
-  TOK_UNPARSE_END, // .unparse .end
-  TOK_DIRECTIVES_STATE,
-  TOK_DIRECTIVES_IGNORE,
-  TOK_DIRECTIVES_EFFECT,
-  TOK_DIRECTIVES_KEYWORD,
+  TOK_TOK_ID,
   TOK_HOOK_BEGIN,
   TOK_HOOK_END,
   TOK_HOOK_FAIL,
   TOK_HOOK_UNPARSE,
   TOK_VPA_ID,
-  TOK_MACRO_ID,
+  TOK_MODULE_ID,
   TOK_USER_HOOK_ID,
-  TOK_TOK_ID,
   TOK_STATE_ID,
-  TOK_OPS_EQ,
-  TOK_OPS_PIPE,
-  TOK_SCOPE_BEGIN,
-  TOK_SCOPE_END,
+  TOK_RE_FRAG_ID,
 
-  // shared by re, re_str, charclass, keyword_str
+  // shared by re, charclass, str
   TOK_CODEPOINT,
   TOK_C_ESCAPE,
   TOK_PLAIN_ESCAPE,
   TOK_CHAR,
+
+  // str scope
+  TOK_STR_START,
 
   // re scope
   TOK_RE_TAG,
@@ -90,12 +140,6 @@ enum {
   TOK_RE_HEX_CLASS,
   TOK_RE_BOF,
   TOK_RE_EOF,
-  TOK_RE_OPS_ALT,
-  TOK_RE_OPS_LPAREN,
-  TOK_RE_OPS_RPAREN,
-  TOK_RE_OPS_MAYBE,
-  TOK_RE_OPS_PLUS,
-  TOK_RE_OPS_STAR,
 
   // re_ref scope
   TOK_RE_REF,
@@ -104,22 +148,11 @@ enum {
   TOK_CHARCLASS_BEGIN,
   TOK_RANGE_SEP,
 
-  // keyword_str scope
-  TOK_KEYWORD_STR,
-
   // peg scope
   TOK_PEG_ID,
   TOK_PEG_TOK_ID,
   TOK_TAG_ID,
-  TOK_BRANCHES_BEGIN,
-  TOK_BRANCHES_END,
-  TOK_PEG_OPS_LT,
-  TOK_PEG_OPS_GT,
-  TOK_PEG_OPS_QUESTION,
-  TOK_PEG_OPS_PLUS,
-  TOK_PEG_OPS_STAR,
-  TOK_PEG_OPS_ASSIGN,
 
   TOK_COUNT
-};
+} TokenId;
 ```

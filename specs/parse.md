@@ -50,11 +50,11 @@ Hooks have the info of current pos, parsed range, can return token id or end / f
 to lex the syntax we mainly have these patterns defined:
 - `%ignore` define tokens to ignore -- these tokens won't get into the stream
 - `%effect` (for validation-only) define effect of a hook. hooks without `%effect` won't emit token / end lexing loop
-- `%keyword` define keyword token
 - `.begin` primitive_hook: begin a scope (named by current rule name), later tokens will be pushed to a new chunk
 - `.end` primitive_hook: end scope, back to parent token stream
 - `.unparse` primitive_hook: put back the matched text so the next rule can re-match it
 - `.fail` primitive_hook: fails parsing
+- `.lit` primitive_lit: emit literal token (auto-named to "lit.xxx"). in peg the strings are auto named "lit.xxx" to match these tokens.
 - `[a-z_]\w*` id
 - `\*{ID}` macro rule, can be used inside a scope to inline definitions
 - `\.{ID}` hook_id
@@ -72,8 +72,8 @@ First implementation of the syntax, must be a manual recursive descendant parser
 the semantic:
 - `main` is the entrance
 - `%define` creates re_frag database, when parsing, expand defines
-- `%keyword` is syntax sugar which will be expanded at [post_process](post_process.md)
-- `.on_*` hooks (e.g. `.on_tok_def`, `.on_id`, `.on_assign`) are user-defined semantic hooks referenced via `\.{id}` pattern. They fire during lexing for semantic actions (tracking definitions, resolving names, etc.) but don't affect the token stream unless combined with `%effect`.
+- `.lit` is syntax sugar which will be expanded at [post_process](post_process.md)
+- user_hook_ids are user-defined functions referenced via `\.{ID}` pattern. They fire during lexing for semantic actions (tracking definitions, resolving names, etc.) but don't affect the token stream unless combined with `%effect`.
 - Visibly pushdown automata
   - scope
     - a union of vpa_rules
@@ -110,7 +110,7 @@ tokens include:
 - `?` maybe, greedy
 - `+` plus, PEG possesive matching
 - `*` star, PEG possesive matching
-- keyword syntax sugar
+- literal syntax sugar
 - comment, space, nl as in vpa
 
 branch tagging syntax
@@ -130,7 +130,8 @@ typedef ScopeConfigs ScopeConfig*;
 
 struct ScopeConfig {
   int32_t scope_id;
-  LexFunc fn;
+  LexFunc lex_fn;
+  ParseFunc parse_fn;
 }
 ```
 
@@ -148,15 +149,110 @@ The parsing also follows this nested structure:
 - When parsing matches to a rule that is not a scope, call it as in normal recursive descendant parsers
 - When parsing matches to a rule that maps to a scope, read a scope_id token and the chunk it points to, and call rule with the new child chunk
 
-In summary, special tokens that require handling are:
+In summary, only `ACTION_XXX` require special handling in the lexing loop:
 
+```c
+// single
+ACTION_IGNORE, // .ignore
+ACTION_BEGIN, // .begin
+ACTION_END, // .end
+ACTION_UNPARSE, // .unparse
+ACTION_FAIL, // .fail
+ACTION_STR_CHECK_END, // .str_check_end
+
+// composite: since lexer api only accepts single action_id, multiple actions must be combined
+ACTION_UNPARSE_END, // .unparse .end
+ACTION_SET_QUOTE_BEGIN, // .set_quote .begin
+ACTION_RE_TAG_BEGIN, // @re_tag .begin
+ACTION_CHARCLASS_BEGIN_BEGIN, // @charclass_begin .begin
 ```
-SCOPE_XXX   // push scope
-TOK_END     // pop scope
-TOK_IGNORE
-TOK_UNPARSE_END   // go back one token, then pop scope
-TOK_SET_QUOTE     // set the quote sate
-TOK_STR_CHECK_END // check the quote state, emit char or pop scope
+
+So after we called a generated `lex_xxx()` and met a mismatch / eof, we check the `last_action_id`:
+
+```c
+bool _lex_scope() {
+  ScopeConfig cfg = configs[scope_id];
+  while (take a codepoint from input) {
+    action_id = feed codepoint to current lexer
+    if (action_id is mismatch) {
+      if (last_action_id > 0) {
+        if (last_action_id < SCOPE_COUNT) {
+          _lex_scope(ctx, last_aciton_id); // call down the lexer
+        } else if (last_action_id < ACTION_COUNT) {
+          switch (last_action_id) {
+            case ACTION_IGNORE:
+              // do nothing
+            case ACTION_BEGIN:
+              create new token chunk at current pos
+            case ACTION_END:
+              goto done
+            case ACTION_UNPARSE:
+              revert one token
+          }
+        } else if (last_action_id < LIT_COUNT) {
+          emit literal token in token chunk
+        } else {
+          emit token in token chunk
+        }
+      } else {
+        error
+        return false
+      }
+    } else {
+      continue feeding
+    }
+  }
+done:
+  // now the chunk is finished, call the parse function
+  cfg.parse_fn(src, token_chunk);
+  return true;
+}
+```
+
+Scope parsing example:
+
+```c
+typedef void* DStr; // darray of chars
+
+bool _parse_str(const char* src, TokenChunk* chunk) {
+  DStr buf = darray_new(sizeof(char), 0);
+  char* b = (char*)buf;
+  int32_t n = (int32_t)darray_size(chunk->tokens);
+  for (int32_t i = 0; i < n; i++) {
+    Token* t = &chunk->tokens[i];
+    switch (t->tok_id) {
+      case TOK_CHAR: {
+        UstrCpBuf slice = ustr_slice_cp(src, t->cp_start);
+        _push_buf(buf, slice.buf);
+        break;
+      }
+      case TOK_CODEPOINT: {
+        UstrIter it = {0};
+        ustr_iter_init(&it, src, t->cp_start + 1);
+        int cp = re_hex_to_codepoint(src + it.byte_off, t->cp_size - 1);
+        char slice[4] = {0};
+        ustr_encode_utf8(slice, cp);
+        _push_buf(buf, slice);
+        break;
+      }
+      case TOK_C_ESCAPE: {
+        UstrIter it = {0};
+        ustr_iter_init(&it, src, t->cp_start + 1);
+        char* b = (char*)buf;
+        darray_push(b, re_c_escape(src[it.byte_off]));
+        break;
+      }
+      case TOK_PLAIN_ESCAPE: {
+        UstrCpBuf slice = ustr_slice_cp(src, t->cp_start + 1);
+        _push_buf(buf, slice.buf);
+        break;
+      }
+    }
+  }
+  darray_push(b, '\0');
+  // write buf to context
+  return true;
+}
 ```
 
 ### Regexp parsing and VPA parse result

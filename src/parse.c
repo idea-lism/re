@@ -24,12 +24,15 @@ typedef struct {
 
 extern LexResult lex_main(int64_t state, int64_t cp);
 extern LexResult lex_vpa(int64_t state, int64_t cp);
+extern LexResult lex_scope(int64_t state, int64_t cp);
+extern LexResult lex_lit_scope(int64_t state, int64_t cp);
 extern LexResult lex_peg(int64_t state, int64_t cp);
+extern LexResult lex_branches(int64_t state, int64_t cp);
+extern LexResult lex_peg_tag(int64_t state, int64_t cp);
 extern LexResult lex_re(int64_t state, int64_t cp);
 extern LexResult lex_re_ref(int64_t state, int64_t cp);
-extern LexResult lex_re_str(int64_t state, int64_t cp);
 extern LexResult lex_charclass(int64_t state, int64_t cp);
-extern LexResult lex_keyword_str(int64_t state, int64_t cp);
+extern LexResult lex_str(int64_t state, int64_t cp);
 
 #define LEX_ACTION_NOMATCH (-2)
 
@@ -495,7 +498,7 @@ static void _lex_scope(LexCtx* ctx, ScopeId scope_id) {
       [SCOPE_PEG] = {SCOPE_PEG, lex_peg},
       [SCOPE_RE] = {SCOPE_RE, lex_re},
       [SCOPE_RE_REF] = {SCOPE_RE_REF, lex_re_ref},
-      [SCOPE_RE_STR] = {SCOPE_RE_STR, lex_re_str},
+      [SCOPE_STR] = {SCOPE_STR, lex_str},
       [SCOPE_CHARCLASS] = {SCOPE_CHARCLASS, lex_charclass},
       [SCOPE_KEYWORD_STR] = {SCOPE_KEYWORD_STR, lex_keyword_str},
   };

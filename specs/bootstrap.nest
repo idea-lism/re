@@ -3,6 +3,8 @@
 # VPA section
 [[vpa]]
 
+# some tokens are essential to source code layout, but noise to AST.
+# with %ignore we can re-construct the source without losing non-semantic tokens
 %ignore @comment @space
 
 # pre-define partial regexp for later use
@@ -10,6 +12,7 @@
 
 %effect .str_check_end = @char | .end
 
+# when used in editor, scopes are auto-foldable and can be selected with text object commands
 main = {
   vpa
   peg
@@ -22,49 +25,94 @@ main = {
   /\n+/ @nl
 }
 
-# if leading regexp matches, push the scope {}
-%keyword *directives "%ignore" "%effect" "%keyword" "%define"
-%keyword *ops "=" "|"
+*directive_keywords = @{
+  "%ignore"
+  "%effect"
+  "%define"
+  "="
+  "|"
+}
+
 vpa = /\s*\[\[vpa\]\]\n/ .begin {
   /\[\[peg\]\]/ .unparse .end
-  re
-  *directives
+  *directive_keywords
+  *vpa_commons
+  scope
+  lit_scope
+  *noise
+}
+
+*vpa_commons = {
   /\.begin/ @hook_begin
   /\.end/ @hook_end
   /\.fail/ @hook_fail
   /\.unparse/ @hook_unparse
   ID @vpa_id
   /[A-Z]\w*/ @re_frag_id
-  /\*\{ID}/ @macro_id
+  /\*\{ID}/ @module_id
   /\.\{ID}/ @user_hook_id
   /\@\{ID}/ @tok_id
-  *ops
-  /{/ @scope_begin
-  /}/ @scope_end
+  re
   str
+}
+
+scope = "{" .begin {
+  *vpa_commons
+  "}" .end
   *noise
 }
 
-%keyword *peg_ops "<" ">" "?" "+" "*" "="
-peg = /\s*\[\[peg\]\]\n/ .begin {
-  /[a-z_]\w*/ @peg_id
-  # note: emit_id always attaches to previous regexp unit
-  #       so the @tok_id token starts and ends with `id`, excluding the `@`
-  /\@\{ID}/ @peg_tok_id
-  peg_tag
-  /\[/ @branches_begin
-  /\]/ @branches_end
-  *peg_ops
+lit_scope = "@{" .begin {
   str
+  "}" .end
+  *noise
+}
+
+*peg_ops = @{
+  "<"
+  ">"
+  "?"
+  "+"
+  "*"
+}
+
+peg = /\s*\[\[peg\]\]\n/ .begin {
+  "=" @peg_assign
+  peg_commons
+  branches
+  *noise
+  /\z/ .end
+}
+
+*peg_commons = {
+  /[a-z_]\w*/ @peg_id
+  /\@\{ID}/ @peg_tok_id
+  str
+  *peg_ops
+  *noise
+}
+
+branches = "[" .begin {
+  *peg_commons
+  peg_tag
+  "]" .end
   *noise
 }
 
 peg_tag = /:/ .begin {
   ID @tag_id
   // .end
+  *noise
 }
 
-%keyword *re_ops "|" "(" ")" "?" "+" "*"
+*re_ops = @{
+  "|"
+  "("
+  ")"
+  "?"
+  "+"
+  "*"
+}
 
 re = /(b|i|ib|bi)?\// @re_tag .begin {
   /\// .end
@@ -99,6 +147,7 @@ charclass = /\[\^?/ @charclass_begin .begin {
   /./ @char
 }
 
+# rewrite to include at least one boundary token, so parser can parse empty str
 str = /["']/ .set_quote .begin {
   /["']/ .str_check_end # may emit char or terminate matching
   *chars
@@ -116,10 +165,9 @@ vpa = @nl* vpa_line+<@nl> @nl*
 vpa_line = [ # branches
   ignore_toks
   effect_spec
-  keyword_def
-  frag_def
+  define_frag
   vpa_rule
-  vpa_macro_rule
+  vpa_module_rule
 ]
 
 ignore_toks = "%ignore" @tok_id+
@@ -134,9 +182,7 @@ effect = [
   @hook_unparse
 ]
 
-keyword_def = "%keyword" @macro_id str+
-
-frag_def = "%define" @re_frag_id re
+define_frag = "%define" @re_frag_id re
 
 vpa_rule = @vpa_id "=" [
   re
@@ -144,7 +190,10 @@ vpa_rule = @vpa_id "=" [
   @re_frag_id
 ] action* scope?
 
-vpa_macro_rule = @macro_id "=" scope
+vpa_module_rule = [
+  @module_id "=" scope
+  @module_id "=" lit_scope
+]
 
 action = [
   @tok_id
@@ -155,14 +204,17 @@ action = [
   @user_hook_id
 ]
 
-scope = @scope_begin @nl* scope_line+<@nl> @nl* @scope_end
+# surroundings already trimmed by lexer
+scope = @nl* scope_line+<@nl> @nl*
+
+lit_scope = @nl* str+<@nl> @nl*
 
 scope_line = [
   re action*
-  re_str action*
+  str action*
   @re_frag_id action*
   @vpa_id action*
-  @macro_id
+  @module_id
 ]
 
 ### Regex AST rules
@@ -207,9 +259,7 @@ charclass_char = [
   @char
 ]
 
-re_str = str_char+
-
-keyword_str = str_char*
+str = str_char*
 
 str_char = [
   @char
@@ -222,14 +272,14 @@ str_char = [
 
 peg = @nl* peg_rule+<@nl> @nl*
 
-peg_rule = @peg_id "=" seq
+peg_rule = @peg_id @peg_assign seq
 
 seq = peg_unit+
 
 peg_unit = [
   @peg_id multiplier?
   @peg_tok_id multiplier?
-  keyword_str multiplier?
+  str multiplier?
   branches
 ]
 
@@ -241,7 +291,9 @@ multiplier = [
 
 interlace = "<" seq ">"
 
-branches = @branches_begin @nl* branch_line+<@nl> @nl* @branches_end
+# lexer already trimmed surroundings
+# scope makes it easy parsable
+branches = @nl* branch_line+<@nl> @nl*
 
 branch_line = [
   seq @tag_id?
