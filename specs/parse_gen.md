@@ -68,15 +68,17 @@ typedef enum {
 typedef enum {
   ACTION_START = SCOPE_COUNT,
 
-  ACTION_IGNORE,
-  ACTION_BEGIN,
-  ACTION_END,
-  ACTION_UNPARSE,
-  ACTION_FAIL,
+  ACTION_IGNORE, // .ignore
+  ACTION_BEGIN, // .begin
+  ACTION_END, // .end
+  ACTION_UNPARSE, // .unparse
+  ACTION_FAIL, // .fail
   ACTION_STR_CHECK_END, // .str_check_end
 
   // composite: since lexer api only accepts single action_id, multiple actions must be combined
   ACTION_UNPARSE_END, // .unparse .end
+  ACTION_SET_RE_MODE_BEGIN, // .set_re_mode .begin
+  ACTION_SET_CC_KIND_BEGIN, // set_cc_kind .begin
   ACTION_SET_QUOTE_BEGIN, // .set_quote .begin
   ACTION_RE_TAG_BEGIN, // @re_tag .begin
   ACTION_CHARCLASS_BEGIN_BEGIN, // @charclass_begin .begin
@@ -131,7 +133,6 @@ typedef enum {
   TOK_STR_START,
 
   // re scope
-  TOK_RE_TAG,
   TOK_RE_DOT,
   TOK_RE_SPACE_CLASS,
   TOK_RE_WORD_CLASS,
@@ -144,7 +145,6 @@ typedef enum {
   TOK_RE_REF,
 
   // charclass scope
-  TOK_CHARCLASS_BEGIN,
   TOK_RANGE_SEP,
 
   // peg scope

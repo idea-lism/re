@@ -458,8 +458,8 @@ static void _build_vpa_commons(Lex* l) {
   _lex_add(l, "\\.[a-z_][a-zA-Z0-9_]*", __LINE__, 15, TOK_USER_HOOK_ID);
   _lex_add(l, "@[a-z_][a-zA-Z0-9_]*", __LINE__, 15, TOK_TOK_ID);
 
-  // re = /(b|i|ib|bi)?\// @re_tag .begin
-  _lex_add(l, "(b|i|ib|bi)?/", __LINE__, 15, ACTION_RE_TAG_BEGIN);
+  // re = /(b|i|ib|bi)?\// .set_re_mode .begin
+  _lex_add(l, "(b|i|ib|bi)?/", __LINE__, 15, ACTION_SET_RE_MODE_BEGIN);
   // re_str = /["']/ .set_quote .begin
   _lex_add(l, "[\"']", __LINE__, 15, ACTION_SET_QUOTE_BEGIN);
 }
@@ -553,9 +553,9 @@ static Lex* _build_re_scope(void) {
 
   // /\// .end
   _lex_add(l, "/", __LINE__, 15, ACTION_END);
-  // charclass = /\[\^?/ @charclass_begin .begin
-  _lex_add(l, "\\[\\^", __LINE__, 15, ACTION_CHARCLASS_BEGIN_BEGIN);
-  _lex_add(l, "\\[", __LINE__, 15, ACTION_CHARCLASS_BEGIN_BEGIN);
+  // charclass = /\[\^?/ .set_cc_kind .begin
+  _lex_add(l, "\\[\\^", __LINE__, 15, ACTION_SET_CC_KIND_BEGIN);
+  _lex_add(l, "\\[", __LINE__, 15, ACTION_SET_CC_KIND_BEGIN);
   _lex_add(l, "\\.", __LINE__, 15, TOK_RE_DOT);
   _lex_add(l, "\\\\s", __LINE__, 15, TOK_RE_SPACE_CLASS);
   _lex_add(l, "\\\\w", __LINE__, 15, TOK_RE_WORD_CLASS);

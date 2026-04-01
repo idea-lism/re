@@ -145,7 +145,6 @@ TEST(test_iter_ascii) {
   UstrIter it;
   ustr_iter_init(&it, s, 0);
   assert(ustr_iter_next(&it) == 'h');
-  assert(it.line == 0 && it.col == 1);
   assert(ustr_iter_next(&it) == 'e');
   assert(ustr_iter_next(&it) == 'l');
   assert(ustr_iter_next(&it) == 'l');
@@ -170,31 +169,6 @@ TEST(test_iter_multibyte) {
   assert(ustr_iter_next(&it) == 'b');
   assert(ustr_iter_next(&it) == -1);
   assert(it.cp_idx == 5);
-  ustr_del(s);
-}
-
-TEST(test_iter_line_col) {
-  const char* input = "ab\ncd\ne";
-  char* s = ustr_new(7, input);
-  assert(s != NULL);
-
-  UstrIter it;
-  ustr_iter_init(&it, s, 0);
-  assert(ustr_iter_next(&it) == 'a');
-  assert(it.line == 0 && it.col == 1);
-  assert(ustr_iter_next(&it) == 'b');
-  assert(it.line == 0 && it.col == 2);
-  assert(ustr_iter_next(&it) == '\n');
-  assert(it.line == 1 && it.col == 0);
-  assert(ustr_iter_next(&it) == 'c');
-  assert(it.line == 1 && it.col == 1);
-  assert(ustr_iter_next(&it) == 'd');
-  assert(it.line == 1 && it.col == 2);
-  assert(ustr_iter_next(&it) == '\n');
-  assert(it.line == 2 && it.col == 0);
-  assert(ustr_iter_next(&it) == 'e');
-  assert(it.line == 2 && it.col == 1);
-  assert(ustr_iter_next(&it) == -1);
   ustr_del(s);
 }
 
@@ -437,7 +411,6 @@ int main(void) {
 
   RUN(test_iter_ascii);
   RUN(test_iter_multibyte);
-  RUN(test_iter_line_col);
   RUN(test_iter_from_middle);
   RUN(test_iter_from_middle_multibyte);
 

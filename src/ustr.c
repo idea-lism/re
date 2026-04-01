@@ -240,8 +240,6 @@ void ustr_iter_init(UstrIter* it, const char* s, int32_t char_offset) {
   it->size = size;
   it->marks = marks;
   it->byte_off = byte_off;
-  it->line = 0;
-  it->col = 0;
   it->cp_idx = char_offset;
 }
 
@@ -272,12 +270,6 @@ int32_t ustr_iter_next(UstrIter* it) {
   it->byte_off += adv;
   it->cp_idx++;
 
-  if (cp == '\n') {
-    it->line++;
-    it->col = 0;
-  } else {
-    it->col++;
-  }
   return cp;
 }
 

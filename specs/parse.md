@@ -47,39 +47,34 @@ The lexer will remain simple, just to solve the state and the macro problem.
 
 Hooks have the info of current pos, parsed range, can return token id or end / fail.
 
-to lex the syntax we mainly have these patterns defined:
+Some tokens and their meanings (details in bootstrap.nest):
 - `%ignore` define tokens to ignore -- these tokens won't get into the stream
 - `%effect` (for validation-only) define effect of a hook. hooks without `%effect` won't emit token / end lexing loop
+- `%define` creates re_frag database, when parsing, expand defines
 - `.begin` primitive_hook: begin a scope (named by current rule name), later tokens will be pushed to a new chunk
 - `.end` primitive_hook: end scope, back to parent token stream
 - `.unparse` primitive_hook: put back the matched text so the next rule can re-match it
 - `.fail` primitive_hook: fails parsing
-- `.lit` primitive_lit: emit literal token (auto-named to "lit.xxx"). in peg the strings are auto named "lit.xxx" to match these tokens.
-- `[a-z_]\w*` id
+- `ID` scope id
 - `\*{ID}` macro rule, can be used inside a scope to inline definitions
 - `\.{ID}` hook_id
-- `\@{ID}` tok_id to emit
+- `\@{ID}` tok_id to emit, means put tok_id into the token streaming token tree (see below)
 - `(b|i|ib|bi)?\/` ... `/` regexp (must not be empty) -- should handle it with child DFA
-- `["'']` ... `$last_quote` quoted string literal, also generates automata
-- `=` assign
-- `|` or
-- `{` scope_begin
-- `\n[[peg]]` ends the vpa parser, go to the peg parser
-- comment, space, nl
+- `.` sets `.` quoted string literal, also generates automata
+- `{` begins a scope
+- `@{` begins a literal module, which is syntax sugar which will be expanded at [post_process](post_process.md)
+- `\n[[peg]]` unparse the token, and ends the vpa parser, then the main lexing will start the peg scope
 
 First implementation of the syntax, must be a manual recursive descend parser.
 
-the semantic:
+More on the semantics:
 - `main` is the entrance
-- `%define` creates re_frag database, when parsing, expand defines
-- `.lit` is syntax sugar which will be expanded at [post_process](post_process.md)
 - user_hook_ids are user-defined functions referenced via `\.{ID}` pattern. They fire during lexing for semantic actions (tracking definitions, resolving names, etc.) but don't affect the token stream unless combined with `%effect`.
 - Visibly pushdown automata
   - scope
     - a union of vpa_rules
     - takes up a token in parent scope
   - lookahead-1 for greedy match: when there can be no action to emit, the last min action wins (see also the MIN-RULE in aut.md)
-- `\@{id}` means put tok_id into the token streaming token tree (see below)
 - when a vpa scope ends, if there is a `peg_rule` with the same id as the `vpa_rule`, invoke peg parsing on the scope tokens.
   - both peg & vpa -- create sub-stream and invoke parsing on sub-stream
   - non-peg vpa -- don't create sub-stream (see example below)
@@ -99,11 +94,10 @@ tok1 tok2 scope1 tok7 tok8
 
 Define parsing expression grammar
 
-tokens include:
+Some tokens and their meanings (details in bootstrap.nest):
 - `[a-z_]\w*` if after a ":", assign tag id for this branch, else is PEG rule id
 - `\@{ID}` token id
 - `:` ... then `ID`: tag a branch
-- `=` assign
 - `[` branches_begin
 - `]` branches_end
 - `<` join/interlace begin
@@ -111,16 +105,15 @@ tokens include:
 - `?` maybe, greedy
 - `+` plus, PEG possesive matching
 - `*` star, PEG possesive matching
-- literal syntax sugar
-- comment, space, nl as in vpa
+
+More on the semantics:
+- if there's id named `main` , it is the entrance. there must be one entrance
+- besides basic peg semantics, we have "join/interlace" semantics which interlaces the "operator" inside angle brackets with the base_multi_unit
+  - to get the idea, can reference `chain` rule Haskell's Parsec library
 
 branch tagging syntax
 - each branch has a tag (denoted by `: the_tag`)
 - if no tag given, it is auto-tagged by [post_process](post_process.md).
-
-PEG semantics:
-- if there's id named `main` , it is the entrance. there must be one entrance
-- besides basic peg semantics, we have "join" semantics which interlaces the "operator" inside angle brackets with the base_multi_unit
 
 ### Nested word lexing
 

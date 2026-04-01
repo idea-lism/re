@@ -114,7 +114,7 @@ peg_tag = /:/ .begin {
   "*"
 }
 
-re = /(b|i|ib|bi)?\// @re_tag .begin {
+re = /(b|i|ib|bi)?\// .set_re_mode .begin {
   /\// .end
   charclass
   /\./ @re_dot
@@ -134,7 +134,7 @@ re_ref = /\\\{/ .begin {
   /\}/ .end
 }
 
-charclass = /\[\^?/ @charclass_begin .begin {
+charclass = /\[\^?/ .set_cc_kind .begin {
   /\]/ .end
   /-/ @range_sep
   *chars
@@ -224,7 +224,7 @@ scope_line = [
 
 ### Regex AST rules
 
-re = @re_tag re_quantified+<"|">
+re = re_quantified+<"|">
 
 re_quantified = re_unit [
   "?" : maybe

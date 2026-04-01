@@ -25,17 +25,18 @@ typedef enum {
 typedef enum {
   ACTION_START = SCOPE_COUNT,
 
-  ACTION_IGNORE,
-  ACTION_BEGIN,
-  ACTION_END,
-  ACTION_UNPARSE,
-  ACTION_UNPARSE_END,
-  ACTION_FAIL,
-  ACTION_STR_CHECK_END,
+  ACTION_IGNORE,        // .ignore
+  ACTION_BEGIN,         // .begin
+  ACTION_END,           // .end
+  ACTION_UNPARSE,       // .unparse
+  ACTION_FAIL,          // .fail
+  ACTION_STR_CHECK_END, // .str_check_end
 
-  ACTION_SET_QUOTE_BEGIN,
-  ACTION_RE_TAG_BEGIN,
-  ACTION_CHARCLASS_BEGIN_BEGIN,
+  // composite: since lexer api only accepts single action_id, multiple actions must be combined
+  ACTION_UNPARSE_END,       // .unparse .end
+  ACTION_SET_RE_MODE_BEGIN, // .set_re_mode .begin
+  ACTION_SET_CC_KIND_BEGIN, // .set_cc_kind .begin
+  ACTION_SET_QUOTE_BEGIN,   // .set_quote .begin
 
   ACTION_COUNT
 } ActionId;
@@ -79,7 +80,6 @@ typedef enum {
   TOK_PLAIN_ESCAPE,
   TOK_CHAR,
 
-  TOK_RE_TAG,
   TOK_RE_DOT,
   TOK_RE_SPACE_CLASS,
   TOK_RE_WORD_CLASS,
@@ -90,7 +90,6 @@ typedef enum {
 
   TOK_RE_REF,
 
-  TOK_CHARCLASS_BEGIN,
   TOK_RANGE_SEP,
 
   TOK_PEG_ID,
@@ -109,6 +108,9 @@ typedef struct {
   ReIr re;
 } ReFragment;
 
+struct SharedState;
+typedef struct SharedState SharedState;
+
 typedef struct {
   const char* src;
   int32_t src_len;
@@ -124,6 +126,7 @@ typedef struct {
   EffectDecl* effects;
   PegRule* peg_rules;
 
+  SharedState* shared;
   char error[512];
 } ParseState;
 

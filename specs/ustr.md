@@ -22,7 +22,7 @@ Resulting code:
   - Basic API `ustr_new(size_t sz, char* data)`, `ustr_del(char* s)`
     - when `new` returns `NULL` indicating an error, provide a helper procedure: `ErrType ustr_find_error(size_t, char* data, size_t* pos)` to get the error position and problem type.
   - Read from file `ustr_from_file(FILE* file)`, which reduces malloc to only once.
-  - Codepoint iterator `ustr_iter_init(it, ustr, char_offset), ustr_iter_next` by scanning marks, which also trackes line and col.
+  - Codepoint iterator `ustr_iter_init(it, ustr, char_offset), ustr_iter_next` by scanning marks
     - iterator can start from middle of string by an offset
     - if the init offset is out of range, `assert(false)`
   - Slicing `ustr_slice(char* s, int32_t cp_start, int32_t cp_end)`
