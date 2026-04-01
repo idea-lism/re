@@ -612,8 +612,6 @@ static int32_t _cmd_compile(int32_t argc, char** argv) {
   vpa_gen(
       &(VpaGenInput){
           .rules = ps->vpa_rules,
-          .keywords = ps->keywords,
-          .states = ps->states,
           .effects = ps->effects,
           .peg_rules = ps->peg_rules,
           .src = ps->src,

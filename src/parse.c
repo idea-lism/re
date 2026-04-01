@@ -150,10 +150,10 @@ typedef struct {
 static int32_t _next_cp(LexCtx* ctx) { return ctx->it.cp_idx >= ctx->cp_count ? -2 : ustr_iter_next(&ctx->it); }
 
 // forward-declare parse_fn functions for ScopeConfig
-static bool _parse_re_scope(ParseState* ps, TokenChunk* chunk);
-static bool _parse_charclass_scope(ParseState* ps, TokenChunk* chunk);
-static bool _parse_re_str_scope(ParseState* ps, TokenChunk* chunk);
-static bool _parse_peg_str_scope(ParseState* ps, TokenChunk* chunk);
+static bool _parse_re(ParseState* ps, TokenChunk* chunk);
+static bool _parse_charclass(ParseState* ps, TokenChunk* chunk);
+static bool _parse_re_str(ParseState* ps, TokenChunk* chunk);
+static bool _parse_peg_str(ParseState* ps, TokenChunk* chunk);
 
 static void _lex_scope(LexCtx* ctx, ScopeId scope_id) {
   static const ScopeConfig configs[] = {
@@ -164,11 +164,11 @@ static void _lex_scope(LexCtx* ctx, ScopeId scope_id) {
       [SCOPE_PEG] = {lex_peg, NULL},
       [SCOPE_BRANCHES] = {lex_branches, NULL},
       [SCOPE_PEG_TAG] = {lex_peg_tag, NULL},
-      [SCOPE_RE] = {lex_re, _parse_re_scope},
+      [SCOPE_RE] = {lex_re, _parse_re},
       [SCOPE_RE_REF] = {lex_re_ref, NULL},
-      [SCOPE_CHARCLASS] = {lex_charclass, _parse_charclass_scope},
-      [SCOPE_RE_STR] = {lex_re_str, _parse_re_str_scope},
-      [SCOPE_PEG_STR] = {lex_peg_str, _parse_peg_str_scope},
+      [SCOPE_CHARCLASS] = {lex_charclass, _parse_charclass},
+      [SCOPE_RE_STR] = {lex_re_str, _parse_re_str},
+      [SCOPE_PEG_STR] = {lex_peg_str, _parse_peg_str},
   };
   ScopeConfig cfg = configs[scope_id];
 
@@ -324,7 +324,7 @@ static ReIr _lookup_frag(ParseState* ps, Token* t) {
 // RE recursive descent — see specs/bootstrap.nest [[peg]] "Regex AST rules"
 // ============================================================================
 
-static ReIr _parse_re(ParseState* ps, ReIr ir, bool icase);
+static ReIr _parse_re_expr(ParseState* ps, ReIr ir, bool icase);
 
 // charclass_char
 static bool _is_charclass_char(int32_t id) { return _is_str_char(id); }
@@ -343,8 +343,7 @@ static ReIr _parse_charclass_unit(ParseState* ps, ReIr ir) {
 }
 
 // charclass = charclass_unit+
-// cc_kind_neg and icase come from shared state
-static ReIr _parse_charclass(ParseState* ps, ReIr ir, bool neg, bool icase) {
+static ReIr _parse_charclass_body(ParseState* ps, ReIr ir, bool neg, bool icase) {
   ir = re_ir_emit(ir, RE_IR_RANGE_BEGIN, 0, 0);
   if (neg) {
     ir = re_ir_emit(ir, RE_IR_RANGE_NEG, 0, 0);
@@ -397,7 +396,7 @@ static ReIr _parse_re_unit(ParseState* ps, ReIr ir, bool icase) {
   case LIT_LPAREN:
     _next(ps);
     ir = re_ir_emit(ir, RE_IR_LPAREN, 0, 0);
-    ir = _parse_re(ps, ir, icase);
+    ir = _parse_re_expr(ps, ir, icase);
     if (_at(ps, LIT_RPAREN)) {
       _next(ps);
     }
@@ -486,7 +485,7 @@ static ReIr _parse_re_quantified(ParseState* ps, ReIr ir, bool icase) {
 }
 
 // re = re_quantified+<"|">
-static ReIr _parse_re(ParseState* ps, ReIr ir, bool icase) {
+static ReIr _parse_re_expr(ParseState* ps, ReIr ir, bool icase) {
   while (!_at_end(ps) && _is_re_unit(_peek(ps)->tok_id)) {
     ir = _parse_re_quantified(ps, ir, icase);
   }
@@ -500,28 +499,24 @@ static ReIr _parse_re(ParseState* ps, ReIr ir, bool icase) {
   return ir;
 }
 
-// parse_fn for SCOPE_RE: enter chunk, parse, store ReIr on chunk->value
-static bool _parse_re_scope(ParseState* ps, TokenChunk* chunk) {
+static bool _parse_re(ParseState* ps, TokenChunk* chunk) {
   Cursor c = _save(ps);
   _enter(ps, chunk);
-  ReIr ir = _parse_re(ps, re_ir_new(), ps->shared->re_mode_icase);
+  chunk->value = _parse_re_expr(ps, re_ir_new(), ps->shared->re_mode_icase);
   _restore(ps, c);
-  chunk->value = ir;
   return true;
 }
 
-// parse_fn for SCOPE_CHARCLASS: enter chunk, parse, store ReIr on chunk->value
-static bool _parse_charclass_scope(ParseState* ps, TokenChunk* chunk) {
+static bool _parse_charclass(ParseState* ps, TokenChunk* chunk) {
   Cursor c = _save(ps);
   _enter(ps, chunk);
-  ReIr ir = _parse_charclass(ps, re_ir_new(), ps->shared->cc_kind_neg, ps->shared->re_mode_icase);
+  chunk->value = _parse_charclass_body(ps, re_ir_new(), ps->shared->cc_kind_neg, ps->shared->re_mode_icase);
   _restore(ps, c);
-  chunk->value = ir;
   return true;
 }
 
 // re_str scope → ReIr (each char becomes a literal match)
-static ReIr _parse_re_str(ParseState* ps, TokenChunk* chunk) {
+static bool _parse_re_str(ParseState* ps, TokenChunk* chunk) {
   ReIr ir = re_ir_new();
   for (int32_t i = 0; i < (int32_t)darray_size(chunk->tokens); i++) {
     Token* t = &chunk->tokens[i];
@@ -529,17 +524,12 @@ static ReIr _parse_re_str(ParseState* ps, TokenChunk* chunk) {
       ir = re_ir_emit_ch(ir, _decode_cp(ps->src, t));
     }
   }
-  return ir;
-}
-
-// parse_fn for SCOPE_RE_STR
-static bool _parse_re_str_scope(ParseState* ps, TokenChunk* chunk) {
-  chunk->value = _parse_re_str(ps, chunk);
+  chunk->value = ir;
   return true;
 }
 
 // peg_str scope → owned string
-static char* _parse_peg_str(ParseState* ps, TokenChunk* chunk) {
+static bool _parse_peg_str(ParseState* ps, TokenChunk* chunk) {
   char* buf = darray_new(sizeof(char), 0);
   for (int32_t i = 0; i < (int32_t)darray_size(chunk->tokens); i++) {
     Token* t = &chunk->tokens[i];
@@ -564,14 +554,8 @@ static char* _parse_peg_str(ParseState* ps, TokenChunk* chunk) {
     }
   }
   darray_push(buf, '\0');
-  char* r = strdup(buf);
+  chunk->value = strdup(buf);
   darray_del(buf);
-  return r;
-}
-
-// parse_fn for SCOPE_PEG_STR
-static bool _parse_peg_str_scope(ParseState* ps, TokenChunk* chunk) {
-  chunk->value = _parse_peg_str(ps, chunk);
   return true;
 }
 

@@ -168,7 +168,7 @@ TEST(test_vpa_unit_regexp) {
   VpaUnit u = {0};
   u.kind = VPA_REGEXP;
   u.re = re_ir_new();
-  re_ir_emit_ch(&u.re, 'a');
+  u.re = re_ir_emit_ch(u.re, 'a');
   u.name = strdup("my_token");
   u.hook = 0;
   u.user_hook = NULL;
@@ -205,7 +205,7 @@ TEST(test_vpa_unit_scope) {
   VpaUnit child = {0};
   child.kind = VPA_REGEXP;
   child.re = re_ir_new();
-  re_ir_emit_ch(&child.re, 'x');
+  child.re = re_ir_emit_ch(child.re, 'x');
   child.name = strdup("inner_tok");
   darray_push(u.children, child);
 
@@ -251,7 +251,7 @@ TEST(test_vpa_rule_basic) {
   VpaUnit u = {0};
   u.kind = VPA_REGEXP;
   u.re = re_ir_new();
-  re_ir_emit_ch(&u.re, 'a');
+  u.re = re_ir_emit_ch(u.re, 'a');
   u.name = strdup("tok_a");
   darray_push(rule.units, u);
 
@@ -376,7 +376,7 @@ TEST(test_vpa_gen_input_with_rules) {
   VpaUnit u = {0};
   u.kind = VPA_REGEXP;
   u.re = re_ir_new();
-  re_ir_emit_ch(&u.re, '/');
+  u.re = re_ir_emit_ch(u.re, '/');
   u.name = strdup("slash");
   darray_push(main_rule.units, u);
 
@@ -413,7 +413,7 @@ TEST(test_scope_handling) {
   VpaUnit leader_s = {0};
   leader_s.kind = VPA_REGEXP;
   leader_s.re = re_ir_new();
-  re_ir_emit_ch(&leader_s.re, 'r');
+  leader_s.re = re_ir_emit_ch(leader_s.re, 'r');
   leader_s.name = strdup("s_leader");
   darray_push(rule_s.units, leader_s);
 
@@ -428,7 +428,7 @@ TEST(test_scope_handling) {
   VpaUnit regex2 = {0};
   regex2.kind = VPA_REGEXP;
   regex2.re = re_ir_new();
-  re_ir_emit_ch(&regex2.re, 'x');
+  regex2.re = re_ir_emit_ch(regex2.re, 'x');
   regex2.name = strdup("tok_regex2");
   darray_push(scope_s.children, regex2);
 
@@ -450,7 +450,7 @@ TEST(test_scope_handling) {
   VpaUnit leader_a = {0};
   leader_a.kind = VPA_REGEXP;
   leader_a.re = re_ir_new();
-  re_ir_emit_ch(&leader_a.re, 'y');
+  leader_a.re = re_ir_emit_ch(leader_a.re, 'y');
   leader_a.name = strdup("a_leader");
   leader_a.user_hook = strdup("hook1");
   darray_push(rule_a.units, leader_a);
@@ -465,7 +465,7 @@ TEST(test_scope_handling) {
   VpaUnit regex4 = {0};
   regex4.kind = VPA_REGEXP;
   regex4.re = re_ir_new();
-  re_ir_emit_ch(&regex4.re, 'z');
+  regex4.re = re_ir_emit_ch(regex4.re, 'z');
   regex4.name = strdup("tok_regex4");
   darray_push(scope_a.children, regex4);
 
@@ -516,11 +516,11 @@ TEST(test_re_ir_for_vpa) {
   assert(darray_size(ir) == 0);
 
   // build a simple pattern: (a|b)
-  re_ir_emit(&ir, RE_IR_LPAREN, 0, 0);
-  re_ir_emit_ch(&ir, 'a');
-  re_ir_emit(&ir, RE_FORK, 0, 0);
-  re_ir_emit_ch(&ir, 'b');
-  re_ir_emit(&ir, RE_IR_RPAREN, 0, 0);
+  ir = re_ir_emit(ir, RE_IR_LPAREN, 0, 0);
+  ir = re_ir_emit_ch(ir, 'a');
+  ir = re_ir_emit(ir, RE_FORK, 0, 0);
+  ir = re_ir_emit_ch(ir, 'b');
+  ir = re_ir_emit(ir, RE_IR_RPAREN, 0, 0);
 
   assert(darray_size(ir) == 5);
   assert(ir[0].kind == RE_IR_LPAREN);
