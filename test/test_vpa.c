@@ -518,14 +518,14 @@ TEST(test_re_ir_for_vpa) {
   // build a simple pattern: (a|b)
   ir = re_ir_emit(ir, RE_IR_LPAREN, 0, 0);
   ir = re_ir_emit_ch(ir, 'a');
-  ir = re_ir_emit(ir, RE_FORK, 0, 0);
+  ir = re_ir_emit(ir, RE_IR_FORK, 0, 0);
   ir = re_ir_emit_ch(ir, 'b');
   ir = re_ir_emit(ir, RE_IR_RPAREN, 0, 0);
 
   assert(darray_size(ir) == 5);
   assert(ir[0].kind == RE_IR_LPAREN);
   assert(ir[1].kind == RE_IR_APPEND_CH);
-  assert(ir[2].kind == RE_FORK);
+  assert(ir[2].kind == RE_IR_FORK);
   assert(ir[3].kind == RE_IR_APPEND_CH);
   assert(ir[4].kind == RE_IR_RPAREN);
 

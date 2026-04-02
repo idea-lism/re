@@ -210,8 +210,10 @@ static void _lex_scope(LexCtx* ctx, ScopeId scope_id) {
     } else if (last_action == ACTION_SET_RE_MODE_BEGIN) {
       ctx->shared.re_mode_icase = false;
       ctx->shared.re_mode_binary = false;
+      UstrIter mode_it = {0};
+      ustr_iter_init(&mode_it, ctx->ps->src, tok_start);
       for (int32_t i = tok_start; i < saved; i++) {
-        int32_t ch = ustr_cp_at(ctx->ps->src, i);
+        int32_t ch = ustr_iter_next(&mode_it);
         if (ch == '/') {
           break;
         }
@@ -225,8 +227,10 @@ static void _lex_scope(LexCtx* ctx, ScopeId scope_id) {
       _lex_scope(ctx, SCOPE_RE);
     } else if (last_action == ACTION_SET_CC_KIND_BEGIN) {
       ctx->shared.cc_kind_neg = false;
+      UstrIter cc_it = {0};
+      ustr_iter_init(&cc_it, ctx->ps->src, tok_start);
       for (int32_t i = tok_start; i < saved; i++) {
-        if (ustr_cp_at(ctx->ps->src, i) == '^') {
+        if (ustr_iter_next(&cc_it) == '^') {
           ctx->shared.cc_kind_neg = true;
           break;
         }
@@ -257,8 +261,10 @@ static void _lex_scope(LexCtx* ctx, ScopeId scope_id) {
   TokenChunk* chunk = ctx->tree->current;
   tc_pop(ctx->tree);
   if (ctx->tree->current->scope_id != SCOPE_START) {
-    tc_add(ctx->tree->current, (Token){.tok_id = scope_id, .cp_start = scope_cp_start,
-                                       .cp_size = ctx->it.cp_idx - scope_cp_start, .chunk_id = chunk_idx});
+    tc_add(ctx->tree->current, (Token){.tok_id = scope_id,
+                                       .cp_start = scope_cp_start,
+                                       .cp_size = ctx->it.cp_idx - scope_cp_start,
+                                       .chunk_id = chunk_idx});
   }
   if (cfg.parse_fn) {
     cfg.parse_fn(ctx->ps, chunk);
@@ -405,9 +411,7 @@ static ReIr _parse_re_unit(ParseState* ps, TokenChunk* chunk, int32_t* tpos, ReI
     TokenChunk* cc = _scope_chunk(ps, t);
     ReIr cc_ir = (ReIr)cc->value;
     if (cc_ir) {
-      for (int32_t i = 0; i < (int32_t)darray_size(cc_ir); i++) {
-        darray_push(ir, cc_ir[i]);
-      }
+      ir = darray_concat(ir, cc_ir);
     }
     return ir;
   }
@@ -463,10 +467,9 @@ static ReIr _parse_re_quantified(ParseState* ps, TokenChunk* chunk, int32_t* tpo
 
   if (q->tok_id == LIT_QUESTION) {
     _next(chunk, tpos);
-    ir = darray_grow(ir, darray_size(ir) + 1);
-    memmove(&ir[s + 1], &ir[s], (size_t)(e - s) * sizeof(ReIrOp));
-    ir[s] = (ReIrOp){RE_IR_LPAREN, 0, 0};
-    ir = re_ir_emit(ir, RE_FORK, 0, 0);
+    ReIrOp op = {RE_IR_LPAREN, 0, 0};
+    ir = darray_insert(ir, (size_t)s, &op);
+    ir = re_ir_emit(ir, RE_IR_FORK, 0, 0);
     ir = re_ir_emit(ir, RE_IR_RPAREN, 0, 0);
   } else if (q->tok_id == LIT_PLUS) {
     _next(chunk, tpos);
@@ -474,17 +477,16 @@ static ReIr _parse_re_quantified(ParseState* ps, TokenChunk* chunk, int32_t* tpo
     for (int32_t i = s; i < e; i++) {
       darray_push(ir, ir[i]);
     }
-    ir = re_ir_emit(ir, RE_FORK, 0, 0);
+    ir = re_ir_emit(ir, RE_IR_FORK, 0, 0);
     ir = re_ir_emit(ir, RE_IR_RPAREN, 0, 0);
   } else if (q->tok_id == LIT_STAR) {
     _next(chunk, tpos);
-    ir = darray_grow(ir, darray_size(ir) + 1);
-    memmove(&ir[s + 1], &ir[s], (size_t)(e - s) * sizeof(ReIrOp));
-    ir[s] = (ReIrOp){RE_IR_LPAREN, 0, 0};
+    ReIrOp op = {RE_IR_LPAREN, 0, 0};
+    ir = darray_insert(ir, (size_t)s, &op);
     for (int32_t i = s + 1; i <= e; i++) {
       darray_push(ir, ir[i]);
     }
-    ir = re_ir_emit(ir, RE_FORK, 0, 0);
+    ir = re_ir_emit(ir, RE_IR_FORK, 0, 0);
     ir = re_ir_emit(ir, RE_IR_RPAREN, 0, 0);
   }
   return ir;
@@ -497,7 +499,7 @@ static ReIr _parse_re_expr(ParseState* ps, TokenChunk* chunk, int32_t* tpos, ReI
   }
   while (_at(chunk, *tpos, LIT_OR)) {
     _next(chunk, tpos);
-    ir = re_ir_emit(ir, RE_FORK, 0, 0);
+    ir = re_ir_emit(ir, RE_IR_FORK, 0, 0);
     while (!_at_end(chunk, *tpos) && _is_re_unit(_peek(chunk, *tpos)->tok_id)) {
       ir = _parse_re_quantified(ps, chunk, tpos, ir, icase);
     }

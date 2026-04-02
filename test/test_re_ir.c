@@ -1,7 +1,6 @@
 #include "../src/re_ir.h"
 #include "../src/darray.h"
 #include <assert.h>
-#include <signal.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/wait.h>
@@ -44,7 +43,7 @@ TEST(test_free_null) {
 
 TEST(test_emit_single) {
   ReIr ir = re_ir_new();
-  re_ir_emit(&ir, RE_IR_LPAREN, 0, 0);
+  ir = re_ir_emit(ir, RE_IR_LPAREN, 0, 0);
   assert(darray_size(ir) == 1);
   assert(ir[0].kind == RE_IR_LPAREN);
   assert(ir[0].start == 0);
@@ -54,16 +53,16 @@ TEST(test_emit_single) {
 
 TEST(test_emit_multiple) {
   ReIr ir = re_ir_new();
-  re_ir_emit(&ir, RE_IR_LPAREN, 0, 0);
-  re_ir_emit(&ir, RE_IR_APPEND_CH, 'a', 'a');
-  re_ir_emit(&ir, RE_FORK, 0, 0);
-  re_ir_emit(&ir, RE_IR_APPEND_CH, 'b', 'b');
-  re_ir_emit(&ir, RE_IR_RPAREN, 0, 0);
+  ir = re_ir_emit(ir, RE_IR_LPAREN, 0, 0);
+  ir = re_ir_emit(ir, RE_IR_APPEND_CH, 'a', 'a');
+  ir = re_ir_emit(ir, RE_IR_FORK, 0, 0);
+  ir = re_ir_emit(ir, RE_IR_APPEND_CH, 'b', 'b');
+  ir = re_ir_emit(ir, RE_IR_RPAREN, 0, 0);
   assert(darray_size(ir) == 5);
   assert(ir[0].kind == RE_IR_LPAREN);
   assert(ir[1].kind == RE_IR_APPEND_CH);
   assert(ir[1].start == 'a');
-  assert(ir[2].kind == RE_FORK);
+  assert(ir[2].kind == RE_IR_FORK);
   assert(ir[3].kind == RE_IR_APPEND_CH);
   assert(ir[3].start == 'b');
   assert(ir[4].kind == RE_IR_RPAREN);
@@ -72,7 +71,7 @@ TEST(test_emit_multiple) {
 
 TEST(test_emit_start_end) {
   ReIr ir = re_ir_new();
-  re_ir_emit(&ir, RE_IR_APPEND_HEX, 0x1F600, 0x1F600);
+  ir = re_ir_emit(ir, RE_IR_APPEND_HEX, 0x1F600, 0x1F600);
   assert(darray_size(ir) == 1);
   assert(ir[0].kind == RE_IR_APPEND_HEX);
   assert(ir[0].start == 0x1F600);
@@ -82,7 +81,7 @@ TEST(test_emit_start_end) {
 
 TEST(test_emit_ch) {
   ReIr ir = re_ir_new();
-  re_ir_emit_ch(&ir, 'x');
+  ir = re_ir_emit_ch(ir, 'x');
   assert(darray_size(ir) == 1);
   assert(ir[0].kind == RE_IR_APPEND_CH);
   assert(ir[0].start == 'x');
@@ -91,7 +90,7 @@ TEST(test_emit_ch) {
 
 TEST(test_emit_ch_multibyte) {
   ReIr ir = re_ir_new();
-  re_ir_emit_ch(&ir, 0x20AC); // €
+  ir = re_ir_emit_ch(ir, 0x20AC); // €
   assert(darray_size(ir) == 1);
   assert(ir[0].kind == RE_IR_APPEND_CH);
   assert(ir[0].start == 0x20AC);
@@ -100,8 +99,8 @@ TEST(test_emit_ch_multibyte) {
 
 TEST(test_emit_ch_special_codepoints) {
   ReIr ir = re_ir_new();
-  re_ir_emit_ch(&ir, LEX_CP_BOF);
-  re_ir_emit_ch(&ir, LEX_CP_EOF);
+  ir = re_ir_emit_ch(ir, LEX_CP_BOF);
+  ir = re_ir_emit_ch(ir, LEX_CP_EOF);
   assert(darray_size(ir) == 2);
   assert(ir[0].start == LEX_CP_BOF);
   assert(ir[1].start == LEX_CP_EOF);
@@ -122,9 +121,9 @@ TEST(test_clone_empty) {
 
 TEST(test_clone_preserves_ops) {
   ReIr ir = re_ir_new();
-  re_ir_emit(&ir, RE_IR_LPAREN, 0, 0);
-  re_ir_emit(&ir, RE_IR_APPEND_CH, 'a', 'a');
-  re_ir_emit(&ir, RE_IR_RPAREN, 0, 0);
+  ir = re_ir_emit(ir, RE_IR_LPAREN, 0, 0);
+  ir = re_ir_emit(ir, RE_IR_APPEND_CH, 'a', 'a');
+  ir = re_ir_emit(ir, RE_IR_RPAREN, 0, 0);
 
   ReIr c = re_ir_clone(ir);
   assert(darray_size(c) == 3);
@@ -139,10 +138,10 @@ TEST(test_clone_preserves_ops) {
 
 TEST(test_clone_independence) {
   ReIr ir = re_ir_new();
-  re_ir_emit(&ir, RE_IR_APPEND_CH, 'a', 'a');
+  ir = re_ir_emit(ir, RE_IR_APPEND_CH, 'a', 'a');
 
   ReIr c = re_ir_clone(ir);
-  re_ir_emit(&c, RE_IR_APPEND_CH, 'b', 'b');
+  c = re_ir_emit(c, RE_IR_APPEND_CH, 'b', 'b');
 
   assert(darray_size(ir) == 1);
   assert(darray_size(c) == 2);
@@ -215,10 +214,10 @@ TEST(test_build_literal_empty) {
 
 TEST(test_range_sequence) {
   ReIr ir = re_ir_new();
-  re_ir_emit(&ir, RE_IR_RANGE_BEGIN, 0, 0);
-  re_ir_emit(&ir, RE_IR_APPEND_CH, 'a', 'z');
-  re_ir_emit(&ir, RE_IR_APPEND_CH, '0', '9');
-  re_ir_emit(&ir, RE_IR_RANGE_END, 0, 0);
+  ir = re_ir_emit(ir, RE_IR_RANGE_BEGIN, 0, 0);
+  ir = re_ir_emit(ir, RE_IR_APPEND_CH, 'a', 'z');
+  ir = re_ir_emit(ir, RE_IR_APPEND_CH, '0', '9');
+  ir = re_ir_emit(ir, RE_IR_RANGE_END, 0, 0);
   assert(darray_size(ir) == 4);
   assert(ir[0].kind == RE_IR_RANGE_BEGIN);
   assert(ir[3].kind == RE_IR_RANGE_END);
@@ -227,11 +226,11 @@ TEST(test_range_sequence) {
 
 TEST(test_range_neg_ic) {
   ReIr ir = re_ir_new();
-  re_ir_emit(&ir, RE_IR_RANGE_BEGIN, 0, 0);
-  re_ir_emit(&ir, RE_IR_APPEND_CH, 'a', 'z');
-  re_ir_emit(&ir, RE_IR_RANGE_NEG, 0, 0);
-  re_ir_emit(&ir, RE_IR_RANGE_IC, 0, 0);
-  re_ir_emit(&ir, RE_IR_RANGE_END, 0, 0);
+  ir = re_ir_emit(ir, RE_IR_RANGE_BEGIN, 0, 0);
+  ir = re_ir_emit(ir, RE_IR_APPEND_CH, 'a', 'z');
+  ir = re_ir_emit(ir, RE_IR_RANGE_NEG, 0, 0);
+  ir = re_ir_emit(ir, RE_IR_RANGE_IC, 0, 0);
+  ir = re_ir_emit(ir, RE_IR_RANGE_END, 0, 0);
   assert(darray_size(ir) == 5);
   assert(ir[2].kind == RE_IR_RANGE_NEG);
   assert(ir[3].kind == RE_IR_RANGE_IC);
@@ -241,11 +240,11 @@ TEST(test_range_neg_ic) {
 TEST(test_paren_fork) {
   // (a|b)
   ReIr ir = re_ir_new();
-  re_ir_emit(&ir, RE_IR_LPAREN, 0, 0);
-  re_ir_emit(&ir, RE_IR_APPEND_CH, 'a', 'a');
-  re_ir_emit(&ir, RE_FORK, 0, 0);
-  re_ir_emit(&ir, RE_IR_APPEND_CH, 'b', 'b');
-  re_ir_emit(&ir, RE_IR_RPAREN, 0, 0);
+  ir = re_ir_emit(ir, RE_IR_LPAREN, 0, 0);
+  ir = re_ir_emit(ir, RE_IR_APPEND_CH, 'a', 'a');
+  ir = re_ir_emit(ir, RE_IR_FORK, 0, 0);
+  ir = re_ir_emit(ir, RE_IR_APPEND_CH, 'b', 'b');
+  ir = re_ir_emit(ir, RE_IR_RPAREN, 0, 0);
   assert(darray_size(ir) == 5);
   re_ir_free(ir);
 }
@@ -253,22 +252,22 @@ TEST(test_paren_fork) {
 TEST(test_nested_parens) {
   // ((a|b)c)
   ReIr ir = re_ir_new();
-  re_ir_emit(&ir, RE_IR_LPAREN, 0, 0);
-  re_ir_emit(&ir, RE_IR_LPAREN, 0, 0);
-  re_ir_emit(&ir, RE_IR_APPEND_CH, 'a', 'a');
-  re_ir_emit(&ir, RE_FORK, 0, 0);
-  re_ir_emit(&ir, RE_IR_APPEND_CH, 'b', 'b');
-  re_ir_emit(&ir, RE_IR_RPAREN, 0, 0);
-  re_ir_emit(&ir, RE_IR_APPEND_CH, 'c', 'c');
-  re_ir_emit(&ir, RE_IR_RPAREN, 0, 0);
+  ir = re_ir_emit(ir, RE_IR_LPAREN, 0, 0);
+  ir = re_ir_emit(ir, RE_IR_LPAREN, 0, 0);
+  ir = re_ir_emit(ir, RE_IR_APPEND_CH, 'a', 'a');
+  ir = re_ir_emit(ir, RE_IR_FORK, 0, 0);
+  ir = re_ir_emit(ir, RE_IR_APPEND_CH, 'b', 'b');
+  ir = re_ir_emit(ir, RE_IR_RPAREN, 0, 0);
+  ir = re_ir_emit(ir, RE_IR_APPEND_CH, 'c', 'c');
+  ir = re_ir_emit(ir, RE_IR_RPAREN, 0, 0);
   assert(darray_size(ir) == 8);
   re_ir_free(ir);
 }
 
 TEST(test_action) {
   ReIr ir = re_ir_new();
-  re_ir_emit(&ir, RE_IR_APPEND_CH, 'a', 'a');
-  re_ir_emit(&ir, RE_IR_ACTION, 42, 0);
+  ir = re_ir_emit(ir, RE_IR_APPEND_CH, 'a', 'a');
+  ir = re_ir_emit(ir, RE_IR_ACTION, 42, 0);
   assert(darray_size(ir) == 2);
   assert(ir[1].kind == RE_IR_ACTION);
   assert(ir[1].start == 42);
@@ -277,11 +276,11 @@ TEST(test_action) {
 
 TEST(test_groups) {
   ReIr ir = re_ir_new();
-  re_ir_emit(&ir, RE_IR_APPEND_GROUP_S, 0, 0);
-  re_ir_emit(&ir, RE_IR_APPEND_GROUP_W, 0, 0);
-  re_ir_emit(&ir, RE_IR_APPEND_GROUP_D, 0, 0);
-  re_ir_emit(&ir, RE_IR_APPEND_GROUP_H, 0, 0);
-  re_ir_emit(&ir, RE_IR_APPEND_GROUP_DOT, 0, 0);
+  ir = re_ir_emit(ir, RE_IR_APPEND_GROUP_S, 0, 0);
+  ir = re_ir_emit(ir, RE_IR_APPEND_GROUP_W, 0, 0);
+  ir = re_ir_emit(ir, RE_IR_APPEND_GROUP_D, 0, 0);
+  ir = re_ir_emit(ir, RE_IR_APPEND_GROUP_H, 0, 0);
+  ir = re_ir_emit(ir, RE_IR_APPEND_GROUP_DOT, 0, 0);
   assert(darray_size(ir) == 5);
   assert(ir[0].kind == RE_IR_APPEND_GROUP_S);
   assert(ir[1].kind == RE_IR_APPEND_GROUP_W);
@@ -293,8 +292,8 @@ TEST(test_groups) {
 
 TEST(test_c_escape) {
   ReIr ir = re_ir_new();
-  re_ir_emit(&ir, RE_IR_APPEND_C_ESCAPE, 'n', 0);
-  re_ir_emit(&ir, RE_IR_APPEND_C_ESCAPE, 't', 0);
+  ir = re_ir_emit(ir, RE_IR_APPEND_C_ESCAPE, 'n', 0);
+  ir = re_ir_emit(ir, RE_IR_APPEND_C_ESCAPE, 't', 0);
   assert(darray_size(ir) == 2);
   assert(ir[0].kind == RE_IR_APPEND_C_ESCAPE);
   assert(ir[0].start == 'n');
@@ -304,7 +303,7 @@ TEST(test_c_escape) {
 
 TEST(test_hex) {
   ReIr ir = re_ir_new();
-  re_ir_emit(&ir, RE_IR_APPEND_HEX, 0x41, 0x41);
+  ir = re_ir_emit(ir, RE_IR_APPEND_HEX, 0x41, 0x41);
   assert(darray_size(ir) == 1);
   assert(ir[0].kind == RE_IR_APPEND_HEX);
   assert(ir[0].start == 0x41);
@@ -314,7 +313,7 @@ TEST(test_hex) {
 
 TEST(test_ignore_case) {
   ReIr ir = re_ir_new();
-  re_ir_emit(&ir, RE_IR_APPEND_CH_IC, 'A', 'A');
+  ir = re_ir_emit(ir, RE_IR_APPEND_CH_IC, 'A', 'A');
   assert(darray_size(ir) == 1);
   assert(ir[0].kind == RE_IR_APPEND_CH_IC);
   assert(ir[0].start == 'A');
@@ -328,7 +327,7 @@ TEST(test_exec_single_ch) {
   Re* re = re_new(aut);
 
   ReIr ir = re_ir_new();
-  re_ir_emit_ch(&ir, 'a');
+  ir = re_ir_emit_ch(ir, 'a');
 
   re_ir_exec(re, ir, (DebugInfo){0, 0});
 
@@ -354,10 +353,10 @@ TEST(test_exec_range) {
   Re* re = re_new(aut);
 
   ReIr ir = re_ir_new();
-  re_ir_emit(&ir, RE_IR_RANGE_BEGIN, 0, 0);
-  re_ir_emit(&ir, RE_IR_APPEND_CH, 'a', 'z');
-  re_ir_emit(&ir, RE_IR_APPEND_CH, '0', '9');
-  re_ir_emit(&ir, RE_IR_RANGE_END, 0, 0);
+  ir = re_ir_emit(ir, RE_IR_RANGE_BEGIN, 0, 0);
+  ir = re_ir_emit(ir, RE_IR_APPEND_CH, 'a', 'z');
+  ir = re_ir_emit(ir, RE_IR_APPEND_CH, '0', '9');
+  ir = re_ir_emit(ir, RE_IR_RANGE_END, 0, 0);
   re_ir_exec(re, ir, (DebugInfo){0, 0});
 
   re_ir_free(ir);
@@ -370,10 +369,10 @@ TEST(test_exec_range_neg) {
   Re* re = re_new(aut);
 
   ReIr ir = re_ir_new();
-  re_ir_emit(&ir, RE_IR_RANGE_BEGIN, 0, 0);
-  re_ir_emit(&ir, RE_IR_APPEND_CH, 'a', 'z');
-  re_ir_emit(&ir, RE_IR_RANGE_NEG, 0, 0);
-  re_ir_emit(&ir, RE_IR_RANGE_END, 0, 0);
+  ir = re_ir_emit(ir, RE_IR_RANGE_BEGIN, 0, 0);
+  ir = re_ir_emit(ir, RE_IR_APPEND_CH, 'a', 'z');
+  ir = re_ir_emit(ir, RE_IR_RANGE_NEG, 0, 0);
+  ir = re_ir_emit(ir, RE_IR_RANGE_END, 0, 0);
   re_ir_exec(re, ir, (DebugInfo){0, 0});
 
   re_ir_free(ir);
@@ -387,11 +386,11 @@ TEST(test_exec_paren_fork) {
 
   // (a|b)
   ReIr ir = re_ir_new();
-  re_ir_emit(&ir, RE_IR_LPAREN, 0, 0);
-  re_ir_emit_ch(&ir, 'a');
-  re_ir_emit(&ir, RE_FORK, 0, 0);
-  re_ir_emit_ch(&ir, 'b');
-  re_ir_emit(&ir, RE_IR_RPAREN, 0, 0);
+  ir = re_ir_emit(ir, RE_IR_LPAREN, 0, 0);
+  ir = re_ir_emit_ch(ir, 'a');
+  ir = re_ir_emit(ir, RE_IR_FORK, 0, 0);
+  ir = re_ir_emit_ch(ir, 'b');
+  ir = re_ir_emit(ir, RE_IR_RPAREN, 0, 0);
   re_ir_exec(re, ir, (DebugInfo){0, 0});
 
   re_ir_free(ir);
@@ -404,11 +403,11 @@ TEST(test_exec_groups) {
   Re* re = re_new(aut);
 
   ReIr ir = re_ir_new();
-  re_ir_emit(&ir, RE_IR_APPEND_GROUP_S, 0, 0);
-  re_ir_emit(&ir, RE_IR_APPEND_GROUP_W, 0, 0);
-  re_ir_emit(&ir, RE_IR_APPEND_GROUP_D, 0, 0);
-  re_ir_emit(&ir, RE_IR_APPEND_GROUP_H, 0, 0);
-  re_ir_emit(&ir, RE_IR_APPEND_GROUP_DOT, 0, 0);
+  ir = re_ir_emit(ir, RE_IR_APPEND_GROUP_S, 0, 0);
+  ir = re_ir_emit(ir, RE_IR_APPEND_GROUP_W, 0, 0);
+  ir = re_ir_emit(ir, RE_IR_APPEND_GROUP_D, 0, 0);
+  ir = re_ir_emit(ir, RE_IR_APPEND_GROUP_H, 0, 0);
+  ir = re_ir_emit(ir, RE_IR_APPEND_GROUP_DOT, 0, 0);
   re_ir_exec(re, ir, (DebugInfo){0, 0});
 
   re_ir_free(ir);
@@ -421,7 +420,7 @@ TEST(test_exec_c_escape) {
   Re* re = re_new(aut);
 
   ReIr ir = re_ir_new();
-  re_ir_emit(&ir, RE_IR_APPEND_C_ESCAPE, 'n', 0);
+  ir = re_ir_emit(ir, RE_IR_APPEND_C_ESCAPE, 'n', 0);
   re_ir_exec(re, ir, (DebugInfo){0, 0});
 
   re_ir_free(ir);
@@ -434,7 +433,7 @@ TEST(test_exec_hex) {
   Re* re = re_new(aut);
 
   ReIr ir = re_ir_new();
-  re_ir_emit(&ir, RE_IR_APPEND_HEX, 0x41, 0x41);
+  ir = re_ir_emit(ir, RE_IR_APPEND_HEX, 0x41, 0x41);
   re_ir_exec(re, ir, (DebugInfo){0, 0});
 
   re_ir_free(ir);
@@ -447,8 +446,8 @@ TEST(test_exec_action) {
   Re* re = re_new(aut);
 
   ReIr ir = re_ir_new();
-  re_ir_emit_ch(&ir, 'a');
-  re_ir_emit(&ir, RE_IR_ACTION, 1, 0);
+  ir = re_ir_emit_ch(ir, 'a');
+  ir = re_ir_emit(ir, RE_IR_ACTION, 1, 0);
   re_ir_exec(re, ir, (DebugInfo){0, 0});
 
   re_ir_free(ir);
@@ -461,7 +460,7 @@ TEST(test_exec_ignore_case) {
   Re* re = re_new(aut);
 
   ReIr ir = re_ir_new();
-  re_ir_emit(&ir, RE_IR_APPEND_CH_IC, 'A', 'A');
+  ir = re_ir_emit(ir, RE_IR_APPEND_CH_IC, 'A', 'A');
   re_ir_exec(re, ir, (DebugInfo){0, 0});
 
   re_ir_free(ir);
@@ -474,10 +473,10 @@ TEST(test_exec_range_ic) {
   Re* re = re_new(aut);
 
   ReIr ir = re_ir_new();
-  re_ir_emit(&ir, RE_IR_RANGE_BEGIN, 0, 0);
-  re_ir_emit(&ir, RE_IR_APPEND_CH, 'a', 'z');
-  re_ir_emit(&ir, RE_IR_RANGE_IC, 0, 0);
-  re_ir_emit(&ir, RE_IR_RANGE_END, 0, 0);
+  ir = re_ir_emit(ir, RE_IR_RANGE_BEGIN, 0, 0);
+  ir = re_ir_emit(ir, RE_IR_APPEND_CH, 'a', 'z');
+  ir = re_ir_emit(ir, RE_IR_RANGE_IC, 0, 0);
+  ir = re_ir_emit(ir, RE_IR_RANGE_END, 0, 0);
   re_ir_exec(re, ir, (DebugInfo){0, 0});
 
   re_ir_free(ir);
@@ -490,7 +489,7 @@ TEST(test_exec_debug_info_passthrough) {
   Re* re = re_new(aut);
 
   ReIr ir = re_ir_new();
-  re_ir_emit_ch(&ir, 'x');
+  ir = re_ir_emit_ch(ir, 'x');
   re_ir_exec(re, ir, (DebugInfo){10, 5});
 
   re_ir_free(ir);
@@ -504,17 +503,17 @@ TEST(test_exec_complex) {
 
   // (([a-z]|\d)\w) => action 1
   ReIr ir = re_ir_new();
-  re_ir_emit(&ir, RE_IR_LPAREN, 0, 0);
-  re_ir_emit(&ir, RE_IR_LPAREN, 0, 0);
-  re_ir_emit(&ir, RE_IR_RANGE_BEGIN, 0, 0);
-  re_ir_emit(&ir, RE_IR_APPEND_CH, 'a', 'z');
-  re_ir_emit(&ir, RE_IR_RANGE_END, 0, 0);
-  re_ir_emit(&ir, RE_FORK, 0, 0);
-  re_ir_emit(&ir, RE_IR_APPEND_GROUP_D, 0, 0);
-  re_ir_emit(&ir, RE_IR_RPAREN, 0, 0);
-  re_ir_emit(&ir, RE_IR_APPEND_GROUP_W, 0, 0);
-  re_ir_emit(&ir, RE_IR_RPAREN, 0, 0);
-  re_ir_emit(&ir, RE_IR_ACTION, 1, 0);
+  ir = re_ir_emit(ir, RE_IR_LPAREN, 0, 0);
+  ir = re_ir_emit(ir, RE_IR_LPAREN, 0, 0);
+  ir = re_ir_emit(ir, RE_IR_RANGE_BEGIN, 0, 0);
+  ir = re_ir_emit(ir, RE_IR_APPEND_CH, 'a', 'z');
+  ir = re_ir_emit(ir, RE_IR_RANGE_END, 0, 0);
+  ir = re_ir_emit(ir, RE_IR_FORK, 0, 0);
+  ir = re_ir_emit(ir, RE_IR_APPEND_GROUP_D, 0, 0);
+  ir = re_ir_emit(ir, RE_IR_RPAREN, 0, 0);
+  ir = re_ir_emit(ir, RE_IR_APPEND_GROUP_W, 0, 0);
+  ir = re_ir_emit(ir, RE_IR_RPAREN, 0, 0);
+  ir = re_ir_emit(ir, RE_IR_ACTION, 1, 0);
   re_ir_exec(re, ir, (DebugInfo){0, 0});
 
   re_ir_free(ir);
@@ -528,7 +527,7 @@ static void malformed_range_end_no_begin(void) {
   Aut* aut = aut_new("test", "test.re");
   Re* re = re_new(aut);
   ReIr ir = re_ir_new();
-  re_ir_emit(&ir, RE_IR_RANGE_END, 0, 0);
+  ir = re_ir_emit(ir, RE_IR_RANGE_END, 0, 0);
   re_ir_exec(re, ir, (DebugInfo){0, 0});
   re_ir_free(ir);
   re_del(re);
@@ -543,7 +542,7 @@ static void malformed_range_neg_no_begin(void) {
   Aut* aut = aut_new("test", "test.re");
   Re* re = re_new(aut);
   ReIr ir = re_ir_new();
-  re_ir_emit(&ir, RE_IR_RANGE_NEG, 0, 0);
+  ir = re_ir_emit(ir, RE_IR_RANGE_NEG, 0, 0);
   re_ir_exec(re, ir, (DebugInfo){0, 0});
   re_ir_free(ir);
   re_del(re);
@@ -558,7 +557,7 @@ static void malformed_range_ic_no_begin(void) {
   Aut* aut = aut_new("test", "test.re");
   Re* re = re_new(aut);
   ReIr ir = re_ir_new();
-  re_ir_emit(&ir, RE_IR_RANGE_IC, 0, 0);
+  ir = re_ir_emit(ir, RE_IR_RANGE_IC, 0, 0);
   re_ir_exec(re, ir, (DebugInfo){0, 0});
   re_ir_free(ir);
   re_del(re);
@@ -573,8 +572,8 @@ static void malformed_nested_range_begin(void) {
   Aut* aut = aut_new("test", "test.re");
   Re* re = re_new(aut);
   ReIr ir = re_ir_new();
-  re_ir_emit(&ir, RE_IR_RANGE_BEGIN, 0, 0);
-  re_ir_emit(&ir, RE_IR_RANGE_BEGIN, 0, 0);
+  ir = re_ir_emit(ir, RE_IR_RANGE_BEGIN, 0, 0);
+  ir = re_ir_emit(ir, RE_IR_RANGE_BEGIN, 0, 0);
   re_ir_exec(re, ir, (DebugInfo){0, 0});
   re_ir_free(ir);
   re_del(re);
@@ -589,8 +588,8 @@ static void malformed_unclosed_range(void) {
   Aut* aut = aut_new("test", "test.re");
   Re* re = re_new(aut);
   ReIr ir = re_ir_new();
-  re_ir_emit(&ir, RE_IR_RANGE_BEGIN, 0, 0);
-  re_ir_emit(&ir, RE_IR_APPEND_CH, 'a', 'z');
+  ir = re_ir_emit(ir, RE_IR_RANGE_BEGIN, 0, 0);
+  ir = re_ir_emit(ir, RE_IR_APPEND_CH, 'a', 'z');
   // missing RANGE_END
   re_ir_exec(re, ir, (DebugInfo){0, 0});
   re_ir_free(ir);

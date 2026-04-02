@@ -24,7 +24,8 @@ exe "test_aut",
   srcs: %w[test/test_aut.c test/compat.c src/aut.c src/irwriter.c src/bitset.c src/darray.c]
 
 exe "test_re",
-  srcs: %w[test/test_re.c test/compat.c src/re.c src/aut.c src/irwriter.c src/bitset.c src/darray.c]
+  srcs: %w[test/test_re.c test/compat.c src/re.c src/aut.c src/irwriter.c src/bitset.c src/darray.c],
+  deps: %w[ustr]
 
 exe "test_parse_gen",
   srcs: %w[test/test_parse_gen.c test/compat.c]

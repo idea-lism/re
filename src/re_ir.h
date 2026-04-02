@@ -20,7 +20,7 @@ typedef enum {
   RE_IR_APPEND_HEX,       // start/end = packed hex codepoint
   RE_IR_LPAREN,           // re_lparen()
   RE_IR_RPAREN,           // re_rparen()
-  RE_FORK,                // re_fork() on new branches
+  RE_IR_FORK,             // re_fork() on new branches
   RE_IR_ACTION,           // re_action()
   RE_IR_FRAG_REF,         // fragment reference (cp_start, cp_size) - resolved after %define
 } ReIrKind;

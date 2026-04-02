@@ -1,5 +1,6 @@
 #include "darray.h"
 
+#include <assert.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -58,4 +59,35 @@ void darray_del(void* a) {
     return;
   }
   free(_header(a));
+}
+
+void* darray_concat(void* a, void* b) {
+  assert(a != b);
+  if (!a || !b) {
+    return a;
+  }
+  DarrayHeader* hb = _header(b);
+  size_t bn = hb->elem_count;
+  if (bn == 0) {
+    return a;
+  }
+  uint32_t es = _header(a)->elem_size;
+  assert(es == hb->elem_size);
+  size_t an = _header(a)->elem_count;
+  a = darray_grow(a, an + bn);
+  memcpy((char*)a + an * es, b, bn * es);
+  return a;
+}
+
+void* darray_insert(void* a, size_t pos, const void* elem) {
+  if (!a) {
+    return a;
+  }
+  size_t n = _header(a)->elem_count;
+  uint32_t es = _header(a)->elem_size;
+  a = darray_grow(a, n + 1);
+  char* p = (char*)a + pos * es;
+  memmove(p + es, p, (n - pos) * es);
+  memcpy(p, elem, es);
+  return a;
 }
