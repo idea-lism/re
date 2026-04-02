@@ -1,96 +1,192 @@
 # Project: tailorbird
 
-1. A regex-to-LLVM-IR compiler. 
-   - Regex patterns → NFA → DFA (minimized) → LLVM IR text → native code via clang.
+## Brief
+
+1. A regex-to-LLVM-IR compiler.
+   - Regex patterns -> NFA -> DFA (minimized) -> LLVM IR text -> native code via clang.
 2. A optimized PEG parser.
    - Graph-coloring optimized parsing.
 
-## Develop
+## Rules
 
-```
+- If the user says "refactor", treat that as permission for disruptive changes.
+- Prefer small, local edits over broad rewrites.
+- Do not invent compatibility layers unless there is a real external need.
+- Check the relevant `specs/*.md` file before changing a subsystem.
+
+## Key Entry Points
+
+- `src/nest.c`: CLI entry point. Subcommands: `nest l`, `nest c`, `nest h`, `nest r`.
+- `src/re.c`, `src/aut.c`, `src/irwriter.c`: regex -> automata -> LLVM IR pipeline.
+- `src/parse_gen.c`: build-time generated lexers for `.nest` syntax.
+- `src/parse.c`: parses `.nest` sources and owns parser state/error reporting.
+- `src/peg.c`, `src/peg_ir.c`: PEG analysis and code generation.
+- `src/vpa.c`: visibly pushdown lexer/parser pieces.
+- `src/coloring.c`, `src/graph.c`: graph coloring for PEG memoization layout.
+- `src/ustr.c`, `src/bitset.c`, `src/darray.c`: reusable runtime/data structures.
+
+## Repo Map
+
+- `src/` core implementation.
+- `test/` tests and benchmarks.
+- `scripts/` wrappers for test, bench, and coverage runs.
+- `specs/` design docs; read the relevant one before editing.
+- `config.rb` / `config.in.rb`: generate `build.ninja` and define targets.
+- `README.md`: user-facing build and CLI usage.
+
+## Specs To Read First
+
+- Regex / automata work: `specs/re.md`, `specs/aut.md`, `specs/re_ir.md`, `specs/irwriter.md`
+- Parser frontend work: `specs/parse.md`, `specs/parse_gen.md`, `specs/post_process.md`
+- PEG work: `specs/peg.md`, `specs/peg_ir.md`, `specs/coloring.md`
+- CLI / build / tests: `specs/cli.md`, `specs/building.md`, `specs/test.md`
+- Strings / containers: `specs/ustr.md`, `specs/bitset.md`, `specs/darray.md`
+
+## Build
+
+Prereqs: Ruby, Ninja, and `unzip`.
+
+Common build:
+
+```sh
 ruby config.rb debug
 ninja
 ```
 
-## Run tests / benchmarks
-
+```sh
+ruby config.rb release
+ninja
 ```
-scripts/test # in release mode
+
+```sh
+ruby config.rb coverage
+ninja
+```
+
+Build modes from `config.in.rb`:
+
+- `debug`: `-O0 -g -fsanitize=address -fsanitize=undefined`
+- `release`: `-O2`
+- `coverage`: `-O0 -g -fprofile-instr-generate -fcoverage-mapping`
+
+- `build/<mode>/nest`
+- `build/<mode>/parse_gen`
+- `build/<mode>/test_*`
+- `build/<mode>/bench_*`
+- `out/libre.a`
+- `out/re_rt.h`
+
+## Test And Benchmark Commands
+
+```sh
+scripts/test
+```
+
+```sh
 scripts/test debug
-scripts/benchmark
-scripts/coverage # generate coverage report at build/coverage/html/index.html
+scripts/test release
 ```
 
-## Clang-format
+Single test flow:
 
-- line width: `120`
-- if style: `if (xxx) {\n ... \n} else {...`
-- pointer arg style: `foo* foo`
-- enforce brace on block bodies
-- on macOS, use `xcrun clang-format` to format
-- others use default (indent = 2 space)
+```sh
+ruby config.rb debug
+ninja build/debug/test_aut
+build/debug/test_aut
+```
 
-## Code style
+Common single-test binaries:
 
-- types use camel case
-- vars & functions use snake case
-- use stdint. for example, `int32_t` instead of `int`
-- static (private) functions should start with `_`, names be simple as possible (without module prefix)
+```sh
+build/debug/test_re
+build/debug/test_parse
+build/debug/test_peg
+build/debug/test_coloring
+```
 
-## Modules (src/)
+```sh
+scripts/bench
+scripts/bench release
+build/release/bench_ustr
+```
 
-| Module | Files | Purpose |
-|--------|-------|---------|
-| ustr | ustr.c, ustr.h, ustr_intern.h, ustr_{neon,avx,naive}.c | Fat-pointer UTF-8 string with SIMD validation (NEON/AVX2/scalar) |
-| bitset | bitset.c, bitset.h | Dynamic bitset for NFA→DFA subset construction |
-| irwriter | irwriter.c, irwriter.h | Emits textual LLVM IR (SSA numbering, basic blocks, DWARF debug, ABI widening) |
-| aut | aut.c, aut.h | Core NFA/DFA engine: subset construction, Hopcroft minimization, IR emission |
-| re | re.c, re.h | Regex builder API on top of aut (groups, alternation, ranges) |
-| lex | lex.c, lex.h | Regex syntax parser, used internally by vpa.c (not distributed) |
-| parse_gen | parse_gen.c | Build-time tool: generates DFA lexers for .nest syntax (inlines lex helpers) |
-| ulex | ulex.c | CLI tool wrapping lex: reads pattern file, emits .ll |
-| coloring | coloring.c, coloring.h | Graph coloring for PEG parser optimization (kissat SAT on macOS/Linux, DSatur on Windows) |
+```sh
+scripts/coverage
+```
 
-Dependency chain: ustr → bitset → irwriter → aut → re → lex → ulex
-PEG parser: coloring (kissat / DSatur) → peg
+- `build/coverage/html/index.html`
 
-## Key design points
+Useful target discovery:
 
-- Generated function signature: `(i32 state, i32 codepoint) -> {i32 new_state, i32 action_id}` (widened to i64 for C ABI)
-- Moore/Mealy semantics for actions. MIN-RULE resolves conflicting action IDs.
-- Special codepoints: BOF = -1, EOF = -2
-- Regex syntax: `[a-z]` `[^...]` `.` `\s \w \d \h` `\n \t` `\u{XXXX}` `| () ? + *` `\a` (BOF) `\z` (EOF)
-- Error codes from lex_add: LEX_ERR_PAREN = -1, LEX_ERR_BRACKET = -2
+```sh
+ninja -t targets | grep 'test_'
+```
 
-## Graph coloring (PEG optimization)
+## Formatting
 
-The `coloring` module uses kissat (SAT solver) to optimize PEG parser memory layout via graph coloring.
+Clang-format is configured by `.clang-format`:
 
-### Build dependency
+- based on LLVM style
+- column limit `120`
+- pointer alignment: left (`foo* p`)
+- braces are inserted for block bodies
 
-kissat is built automatically by `config.rb` on macOS/Linux (downloads rel-4.0.4, builds to `build/kissat/build/libkissat.a`). On Windows, DSatur is used instead and kissat is not required.
+```sh
+xcrun clang-format -i path/to/file.c path/to/file.h
+```
 
-### SAT encoding
+On other platforms use `clang-format -i`.
 
-Given interference graph G (vertices = PEG rules, edges = non-exclusive rules) and k colors:
-- Variables: `x[v,c]` = vertex v has color c (1 ≤ v ≤ n, 0 ≤ c < k)
-- Each vertex gets exactly one color: `∨c x[v,c]` and `¬x[v,c1] ∨ ¬x[v,c2]` for c1 ≠ c2
-- Adjacent vertices get different colors: `¬x[u,c] ∨ ¬x[v,c]` for edge (u,v)
-- Symmetry breaking: fix vertex 0 to color 0
+## Code Style
 
-### Segment layout
+- Types use camel case: `Aut`, `IrWriter`, `ColoringResult`.
+- Variables and functions use snake case: `header_path`, `aut_gen_dfa`.
+- Static private helpers start with `_`: `_usage`, `_detect_triple`, `_build_segments`.
+- Use explicit stdint types: `int32_t`, `uint8_t`, `int64_t`.
+- Prefer `bool` for boolean state where the module already uses it.
+- Keep related logic in one function unless extraction clearly improves reuse or clarity.
+- Prefer small local structs and helpers over large abstraction layers.
 
-After coloring, vertices with same color form groups. Groups >32 elements split into 32-element segments.
-Each vertex gets `(sg_id, seg_mask)` for bitset-based cache lookup in generated parser (see specs/peg.md).
+## Includes And File Layout
 
-## Specs
+- Put project headers first, then system headers.
+- Keep include order stable and simple; do not over-normalize unrelated files.
+- Most `.c` files define private structs and static helpers near the top.
+- Public API belongs in headers under `src/`; internal-only helpers stay `static` in the `.c` file.
 
-Detailed module specs live in `specs/*.md`. Refer to them when making changes to a module.
+## Error Handling Conventions
 
-## Build outputs
+- Library-style functions typically return `NULL`, `false`, or negative error codes on failure.
+- CLI-facing code prints diagnostics with `perror` or `fprintf(stderr, ...)` and returns non-zero.
+- Parser code centralizes user-facing parse errors in `ParseState` via `parse_error()` / `_error_at()`.
+- Do not hide failures with fallback behavior unless the existing code already does that intentionally.
+- Clean up owned resources on error paths; this codebase usually frees explicitly before returning.
+- Follow existing sentinel conventions such as `0` meaning unset action and negative values for special errors.
 
-- `out/libre.a` -- combined static lib (ustr + bitset + irwriter + aut + re)
-- `out/re_rt.h` -- amalgamated single-header runtime (ustr + bitset)
-- `build/<mode>/ulex` -- CLI tool
-- `build/<mode>/parse_gen` -- build-time lexer generator for .nest syntax
-- `build/<mode>/test_*` -- test binaries
+## Testing Style
+
+- Tests are plain C executables under `test/`.
+- Common pattern: `#define TEST(name) static void name(void)` and `RUN(name)` in `main`.
+- Assertions use standard `assert()` heavily.
+- Prefer adding or updating the smallest test binary covering your change.
+- If you touch a generator, test both structure and generated text where practical.
+
+## Project-Specific Notes
+
+- The generated lexer function signature is `(i32 state, i32 codepoint) -> {i32 new_state, i32 action_id}` and is widened to `i64` pairs for the C ABI.
+- Special codepoints are `BOF = -1` and `EOF = -2`.
+- Regex conflict resolution uses MIN-RULE semantics for action IDs.
+- On macOS/Linux, `kissat` is built automatically; on Windows, `coloring.c` falls back to DSatur.
+- Some older docs or agent notes may mention `lex.c` / `ulex.c`; current CLI entry point is `src/nest.c`.
+
+## Agent Checklist
+
+- Read the relevant spec before editing a subsystem.
+- Build the smallest relevant target first.
+- Run the narrowest relevant test binary, then broader tests if needed.
+- Format touched C/C header files.
+- Avoid changing unrelated files or rewriting large generated/derived sections without need.
+
+## External Agent Rules
+
+- No `.cursor/rules/`, `.cursorrules`, or `.github/copilot-instructions.md` files exist in this repository at the time of writing.

@@ -1,4 +1,8 @@
 #!/usr/bin/env ruby
+
+require 'open-uri'
+require 'fileutils'
+
 # config.rb -- universal build.ninja generator
 # Usage: ruby config.rb [debug|release]
 
@@ -91,9 +95,19 @@ BUILDDIR = "build/#{MODE}"
 
 require_relative "config.in.rb"
 
+def gen_str_header src, dst
+  d = File.read src
+  File.write "build/#{dst}.inc", <<-C
+// Generated from #{src} by config.rb -- do not edit
+static const unsigned char #{dst}[] = {#{(d.unpack 'C*').join ','}, 0};
+C
+end
+
+FileUtils.mkdir_p "build"
+gen_str_header "specs/nest_syntax.md", "nest_syntax"
+gen_str_header "specs/bootstrap.nest", "nest_reference"
+
 # --- Ensure amalgamate tool is available ---
-require 'open-uri'
-require 'fileutils'
 
 def amalgamate_url
   base = "https://github.com/rindeal/Amalgamate/releases/download/v0.99.0"

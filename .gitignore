@@ -8,3 +8,5 @@ lex_wrap.o
 .cache
 .DS_Store
 *.profraw
+src/nest_syntax.inc
+src/nest_bootstrap.inc

@@ -1,0 +1,53 @@
+[[vpa]]
+%ignore @space
+main = {
+  /if/ @kw_if
+  /else/ @kw_else
+  /while/ @kw_while
+  /[a-zA-Z_]\w*/ @ident
+  /\d+/ @number
+  /\s+/ @space
+  /\+/ @plus
+  /-/ @minus
+  /\*/ @star
+  /\// @slash
+  /=/ @assign
+  /;/ @semi
+  /\(/ @lparen
+  /\)/ @rparen
+  /\{/ @lbrace
+  /\}/ @rbrace
+  /==/ @eq
+  /!=/ @ne
+  /</ @lt
+  />/ @gt
+  /<=/ @le
+  />=/ @ge
+}
+[[peg]]
+program = stmt*
+stmt = [
+  if_stmt
+  while_stmt
+  assign_stmt
+]
+if_stmt = @kw_if @lparen expr @rparen block else_block?
+else_block = @kw_else block
+while_stmt = @kw_while @lparen expr @rparen block
+block = @lbrace stmt* @rbrace
+assign_stmt = @ident @assign expr @semi
+expr = term+<addop>
+addop = [
+  @plus
+  @minus
+]
+term = factor+<mulop>
+mulop = [
+  @star
+  @slash
+]
+factor = [
+  @number
+  @ident
+  @lparen expr @rparen
+]

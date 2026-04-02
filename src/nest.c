@@ -66,6 +66,8 @@ static void _usage(void) {
                   "commands:\n"
                   "  l    generate lexer from regex patterns\n"
                   "  c    generate parser from .nest syntax\n"
+                  "  h    show .nest syntax reference\n"
+                  "  r    show bootstrap.nest reference\n"
                   "\n"
                   "nest l <input> [options]\n");
 #define OPTION(s, l, n, d) CMDOPT_USAGE(s, l, n, d)
@@ -74,6 +76,20 @@ static void _usage(void) {
 #define OPTION(s, l, n, d) CMDOPT_USAGE(s, l, n, d)
 #include "compile_opts.inc"
   exit(1);
+}
+
+#include "nest_syntax.inc"
+
+static void _cmd_help(void) {
+  fputs((const char*)nest_syntax, stdout);
+  exit(0);
+}
+
+#include "nest_reference.inc"
+
+static void _cmd_reference(void) {
+  fputs((const char*)nest_reference, stdout);
+  exit(0);
 }
 
 static int32_t _cmd_lex(int32_t argc, char** argv) {
@@ -255,6 +271,10 @@ int main(int argc, char** argv) {
     return _cmd_lex(argc - 2, argv + 2);
   } else if (strcmp(cmd, "c") == 0) {
     return _cmd_compile(argc - 2, argv + 2);
+  } else if (strcmp(cmd, "h") == 0) {
+    _cmd_help();
+  } else if (strcmp(cmd, "r") == 0) {
+    _cmd_reference();
   } else {
     fprintf(stderr, "unknown command: %s\n", cmd);
     _usage();
